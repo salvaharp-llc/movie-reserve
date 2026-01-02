@@ -50,6 +50,10 @@ func main() {
 	fsHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 	mux.Handle("/app/", fsHandler)
 
+	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
+
+	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+
 	server := http.Server{
 		Addr:    ":" + port,
 		Handler: mux,
