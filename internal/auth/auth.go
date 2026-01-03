@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -19,6 +21,8 @@ const (
 	TokenTypeAccess TokenType = "movie-reserve-access"
 	// JwtExpiresIn -
 	JwtExpiresIn time.Duration = time.Hour
+	// RefreshTokenExpiresIn -
+	RefreshTokenExpiresIn time.Duration = 60 * 24 * time.Hour
 )
 
 func HashPassword(password string) (string, error) {
@@ -81,4 +85,10 @@ func GetBearerToken(headers http.Header) (string, error) {
 	}
 
 	return splitAuth[1], nil
+}
+
+func MakeRefreshToken() string {
+	data := make([]byte, 32)
+	rand.Read(data)
+	return hex.EncodeToString(data)
 }
