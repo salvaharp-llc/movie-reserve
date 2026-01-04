@@ -7,7 +7,6 @@ package database
 
 import (
 	"context"
-	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -45,57 +44,25 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 	return i, err
 }
 
-const getRefreshToken = `-- name: GetRefreshToken :one
-SELECT refresh_tokens.token, refresh_tokens.created_at, refresh_tokens.updated_at, refresh_tokens.user_id, refresh_tokens.expires_at, refresh_tokens.revoked_at, users.is_admin
-FROM refresh_tokens
-INNER JOIN users ON refresh_tokens.user_id = users.id
-WHERE token = $1
-AND revoked_at IS NULL
-AND expires_at > NOW()
-`
-
-type GetRefreshTokenRow struct {
-	Token     string
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	UserID    uuid.UUID
-	ExpiresAt time.Time
-	RevokedAt sql.NullTime
-	IsAdmin   bool
-}
-
-func (q *Queries) GetRefreshToken(ctx context.Context, token string) (GetRefreshTokenRow, error) {
-	row := q.db.QueryRowContext(ctx, getRefreshToken, token)
-	var i GetRefreshTokenRow
-	err := row.Scan(
-		&i.Token,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.UserID,
-		&i.ExpiresAt,
-		&i.RevokedAt,
-		&i.IsAdmin,
-	)
-	return i, err
-}
-
 const revokeRefreshToken = `-- name: RevokeRefreshToken :one
 UPDATE refresh_tokens
 SET updated_at = NOW(), revoked_at = NOW()
-WHERE token = $1
-RETURNING token, created_at, updated_at, user_id, expires_at, revoked_at
+FROM users
+WHERE refresh_tokens.token = $1
+  AND refresh_tokens.revoked_at IS NULL
+  AND refresh_tokens.expires_at > NOW()
+  AND users.id = refresh_tokens.user_id
+RETURNING refresh_tokens.user_id, users.is_admin
 `
 
-func (q *Queries) RevokeRefreshToken(ctx context.Context, token string) (RefreshToken, error) {
+type RevokeRefreshTokenRow struct {
+	UserID  uuid.UUID
+	IsAdmin bool
+}
+
+func (q *Queries) RevokeRefreshToken(ctx context.Context, token string) (RevokeRefreshTokenRow, error) {
 	row := q.db.QueryRowContext(ctx, revokeRefreshToken, token)
-	var i RefreshToken
-	err := row.Scan(
-		&i.Token,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.UserID,
-		&i.ExpiresAt,
-		&i.RevokedAt,
-	)
+	var i RevokeRefreshTokenRow
+	err := row.Scan(&i.UserID, &i.IsAdmin)
 	return i, err
 }

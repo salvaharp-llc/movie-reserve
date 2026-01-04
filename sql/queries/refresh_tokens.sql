@@ -9,16 +9,12 @@ VALUES (
 )
 RETURNING *;
 
--- name: GetRefreshToken :one
-SELECT refresh_tokens.*, users.is_admin
-FROM refresh_tokens
-INNER JOIN users ON refresh_tokens.user_id = users.id
-WHERE token = $1
-AND revoked_at IS NULL
-AND expires_at > NOW();
-
 -- name: RevokeRefreshToken :one
 UPDATE refresh_tokens
 SET updated_at = NOW(), revoked_at = NOW()
-WHERE token = $1
-RETURNING *;
+FROM users
+WHERE refresh_tokens.token = $1
+  AND refresh_tokens.revoked_at IS NULL
+  AND refresh_tokens.expires_at > NOW()
+  AND users.id = refresh_tokens.user_id
+RETURNING refresh_tokens.user_id, users.is_admin;

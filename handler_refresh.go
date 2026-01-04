@@ -2,13 +2,16 @@ package main
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/salvaharp-llc/movie-reserve/internal/auth"
+	"github.com/salvaharp-llc/movie-reserve/internal/database"
 )
 
 func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Token string `json:"token"`
+		Token        string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	refreshToken, err := auth.GetBearerToken(r.Header)
@@ -17,15 +20,27 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	refreshTokenDb, err := cfg.db.GetRefreshToken(r.Context(), refreshToken)
+	accessInfo, err := cfg.db.RevokeRefreshToken(r.Context(), refreshToken)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Invalid refresh token", err)
 		return
 	}
 
+	newRefreshToken := auth.MakeRefreshToken()
+
+	_, err = cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
+		Token:     newRefreshToken,
+		UserID:    accessInfo.UserID,
+		ExpiresAt: time.Now().Add(auth.RefreshTokenExpiresIn),
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not save refresh token", err)
+		return
+	}
+
 	accessToken, err := auth.MakeJWT(
-		refreshTokenDb.UserID,
-		refreshTokenDb.IsAdmin,
+		accessInfo.UserID,
+		accessInfo.IsAdmin,
 		cfg.JWTSecret,
 		auth.JwtExpiresIn)
 	if err != nil {
@@ -34,6 +49,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, response{
-		Token: accessToken,
+		Token:        accessToken,
+		RefreshToken: newRefreshToken,
 	})
 }
