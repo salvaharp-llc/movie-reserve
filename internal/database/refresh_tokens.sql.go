@@ -48,7 +48,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 const getRefreshToken = `-- name: GetRefreshToken :one
 SELECT refresh_tokens.token, refresh_tokens.created_at, refresh_tokens.updated_at, refresh_tokens.user_id, refresh_tokens.expires_at, refresh_tokens.revoked_at, users.is_admin
 FROM refresh_tokens
-LEFT JOIN users ON refresh_tokens.user_id = users.id
+INNER JOIN users ON refresh_tokens.user_id = users.id
 WHERE token = $1
 AND revoked_at IS NULL
 AND expires_at > NOW()
@@ -61,7 +61,7 @@ type GetRefreshTokenRow struct {
 	UserID    uuid.UUID
 	ExpiresAt time.Time
 	RevokedAt sql.NullTime
-	IsAdmin   sql.NullBool
+	IsAdmin   bool
 }
 
 func (q *Queries) GetRefreshToken(ctx context.Context, token string) (GetRefreshTokenRow, error) {

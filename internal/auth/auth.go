@@ -16,6 +16,11 @@ import (
 
 type TokenType string
 
+type jwtClaims struct {
+	IsAdmin bool `json:"is_admin"`
+	jwt.RegisteredClaims
+}
+
 const (
 	// TokenTypeAccess -
 	TokenTypeAccess TokenType = "movie-reserve-access"
@@ -33,44 +38,42 @@ func CheckPasswordHash(password, hash string) (bool, error) {
 	return argon2id.ComparePasswordAndHash(password, hash)
 }
 
-func MakeJWT(userID uuid.UUID, tokenSecret string, expiresIn time.Duration) (string, error) {
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.RegisteredClaims{
-		Issuer:    string(TokenTypeAccess),
-		IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
-		ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(expiresIn)),
-		Subject:   userID.String(),
-	})
+func MakeJWT(userID uuid.UUID, isAdmin bool, tokenSecret string, expiresIn time.Duration) (string, error) {
+	claims := jwtClaims{
+		IsAdmin: isAdmin,
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    string(TokenTypeAccess),
+			IssuedAt:  jwt.NewNumericDate(time.Now().UTC()),
+			ExpiresAt: jwt.NewNumericDate(time.Now().UTC().Add(expiresIn)),
+			Subject:   userID.String(),
+		},
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	return token.SignedString([]byte(tokenSecret))
 }
 
-func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, error) {
-	claims := jwt.MapClaims{}
-	_, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
+func ValidateJWT(tokenString, tokenSecret string) (uuid.UUID, bool, error) {
+	claims := &jwtClaims{}
+	tkn, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
 		return []byte(tokenSecret), nil
 	})
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, false, err
+	}
+	if !tkn.Valid {
+		return uuid.Nil, false, errors.New("invalid token")
 	}
 
-	stringUserID, err := claims.GetSubject()
-	if err != nil {
-		return uuid.Nil, err
+	if claims.Issuer != string(TokenTypeAccess) {
+		return uuid.Nil, false, errors.New("invalid issuer")
 	}
 
-	issuer, err := claims.GetIssuer()
+	userID, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, false, fmt.Errorf("invalid user ID: %w", err)
 	}
-	if issuer != string(TokenTypeAccess) {
-		return uuid.Nil, errors.New("invalid issuer")
-	}
-
-	userID, err := uuid.Parse(stringUserID)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("invalid user ID: %w", err)
-	}
-	return userID, nil
+	return userID, claims.IsAdmin, nil
 }
 
 func GetBearerToken(headers http.Header) (string, error) {

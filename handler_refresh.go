@@ -23,7 +23,11 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := auth.MakeJWT(refreshTokenDb.UserID, cfg.JWTSecret, auth.JwtExpiresIn)
+	accessToken, err := auth.MakeJWT(
+		refreshTokenDb.UserID,
+		refreshTokenDb.IsAdmin,
+		cfg.JWTSecret,
+		auth.JwtExpiresIn)
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Couldn't validate token", err)
 		return

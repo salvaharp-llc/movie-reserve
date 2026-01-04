@@ -12,7 +12,7 @@ RETURNING *;
 -- name: GetRefreshToken :one
 SELECT refresh_tokens.*, users.is_admin
 FROM refresh_tokens
-LEFT JOIN users ON refresh_tokens.user_id = users.id
+INNER JOIN users ON refresh_tokens.user_id = users.id
 WHERE token = $1
 AND revoked_at IS NULL
 AND expires_at > NOW();

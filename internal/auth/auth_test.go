@@ -78,48 +78,53 @@ func TestValidateJWT(t *testing.T) {
 	key2 := "anotherPassword456!"
 	id1 := uuid.New()
 	id2 := uuid.New()
-	jwt1, _ := MakeJWT(id1, key1, time.Duration(5*time.Second))
-	jwt2, _ := MakeJWT(id2, key2, time.Duration(1*time.Millisecond))
+	jwt1, _ := MakeJWT(id1, true, key1, time.Duration(5*time.Second))
+	jwt2, _ := MakeJWT(id2, false, key2, time.Duration(1*time.Millisecond))
 
 	tests := []struct {
-		name    string
-		key     string
-		id      uuid.UUID
-		jwt     string
-		wantErr bool
-		matchID bool
+		name      string
+		key       string
+		id        uuid.UUID
+		jwt       string
+		wantErr   bool
+		matchID   bool
+		wantAdmin bool
 	}{
 		{
-			name:    "Correct id",
-			key:     key1,
-			id:      id1,
-			jwt:     jwt1,
-			wantErr: false,
-			matchID: true,
+			name:      "Correct id",
+			key:       key1,
+			id:        id1,
+			jwt:       jwt1,
+			wantErr:   false,
+			matchID:   true,
+			wantAdmin: true,
 		},
 		{
-			name:    "Incorrect id",
-			key:     key1,
-			id:      id2,
-			jwt:     jwt1,
-			wantErr: false,
-			matchID: false,
+			name:      "Incorrect id",
+			key:       key1,
+			id:        id2,
+			jwt:       jwt1,
+			wantErr:   false,
+			matchID:   false,
+			wantAdmin: true,
 		},
 		{
-			name:    "Incorrect key",
-			key:     key2,
-			id:      id1,
-			jwt:     jwt1,
-			wantErr: true,
-			matchID: true,
+			name:      "Incorrect key",
+			key:       key2,
+			id:        id1,
+			jwt:       jwt1,
+			wantErr:   true,
+			matchID:   true,
+			wantAdmin: true,
 		},
 		{
-			name:    "Invalid token",
-			key:     key2,
-			id:      id2,
-			jwt:     jwt2,
-			wantErr: true,
-			matchID: true,
+			name:      "Invalid token",
+			key:       key2,
+			id:        id2,
+			jwt:       jwt2,
+			wantErr:   true,
+			matchID:   true,
+			wantAdmin: false,
 		},
 	}
 
@@ -127,12 +132,15 @@ func TestValidateJWT(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			id, err := ValidateJWT(tt.jwt, tt.key)
+			id, isAdmin, err := ValidateJWT(tt.jwt, tt.key)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateJWT() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr && (id == tt.id) != tt.matchID {
 				t.Errorf("ValidateJWT() wants ID %v, got %v", tt.id, id)
+			}
+			if !tt.wantErr && isAdmin != tt.wantAdmin {
+				t.Errorf("ValidateJWT() wants isAdmin %v, got %v", tt.wantAdmin, isAdmin)
 			}
 		})
 	}
