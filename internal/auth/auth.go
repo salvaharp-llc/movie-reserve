@@ -2,6 +2,7 @@ package auth
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -105,6 +106,11 @@ func MakeRefreshToken() string {
 	data := make([]byte, 32)
 	rand.Read(data)
 	return hex.EncodeToString(data)
+}
+
+func HashRefreshToken(token string) string {
+	hashBytes := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hashBytes[:])
 }
 
 func IsValidRole(r string) bool {

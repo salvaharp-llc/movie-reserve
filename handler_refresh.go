@@ -20,7 +20,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessInfo, err := cfg.db.RevokeRefreshToken(r.Context(), refreshToken)
+	accessInfo, err := cfg.db.RevokeRefreshToken(r.Context(), auth.HashRefreshToken(refreshToken))
 	if err != nil {
 		respondWithError(w, http.StatusUnauthorized, "Invalid refresh token", err)
 		return
@@ -29,7 +29,7 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 	newRefreshToken := auth.MakeRefreshToken()
 
 	_, err = cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
-		Token:     newRefreshToken,
+		Token:     auth.HashRefreshToken(newRefreshToken),
 		UserID:    accessInfo.UserID,
 		ExpiresAt: time.Now().Add(auth.RefreshTokenExpiresIn),
 	})

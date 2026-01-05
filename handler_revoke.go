@@ -13,7 +13,7 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = cfg.db.RevokeRefreshToken(r.Context(), refreshToken)
+	_, err = cfg.db.RevokeRefreshToken(r.Context(), auth.HashRefreshToken(refreshToken))
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not revoke the refresh token", err)
 		return

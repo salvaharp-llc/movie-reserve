@@ -53,7 +53,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 	refreshToken := auth.MakeRefreshToken()
 
 	_, err = cfg.db.CreateRefreshToken(r.Context(), database.CreateRefreshTokenParams{
-		Token:     refreshToken,
+		Token:     auth.HashRefreshToken(refreshToken),
 		UserID:    user.ID,
 		ExpiresAt: time.Now().Add(auth.RefreshTokenExpiresIn),
 	})
