@@ -20,7 +20,7 @@ VALUES (
     $1,
     $2
 )
-RETURNING id, created_at, updated_at, email, hashed_password, is_admin
+RETURNING id, created_at, updated_at, email, hashed_password, role
 `
 
 type CreateUserParams struct {
@@ -37,13 +37,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.UpdatedAt,
 		&i.Email,
 		&i.HashedPassword,
-		&i.IsAdmin,
+		&i.Role,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, created_at, updated_at, email, hashed_password, is_admin FROM users
+SELECT id, created_at, updated_at, email, hashed_password, role FROM users
 WHERE email = $1
 `
 
@@ -56,15 +56,15 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.UpdatedAt,
 		&i.Email,
 		&i.HashedPassword,
-		&i.IsAdmin,
+		&i.Role,
 	)
 	return i, err
 }
 
 const makeAdmin = `-- name: MakeAdmin :one
-UPDATE users SET is_admin = true, updated_at = NOW()
+UPDATE users SET role = 'admin', updated_at = NOW()
 WHERE id = $1
-RETURNING id, created_at, updated_at, email, hashed_password, is_admin
+RETURNING id, created_at, updated_at, email, hashed_password, role
 `
 
 func (q *Queries) MakeAdmin(ctx context.Context, id uuid.UUID) (User, error) {
@@ -76,7 +76,7 @@ func (q *Queries) MakeAdmin(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.UpdatedAt,
 		&i.Email,
 		&i.HashedPassword,
-		&i.IsAdmin,
+		&i.Role,
 	)
 	return i, err
 }

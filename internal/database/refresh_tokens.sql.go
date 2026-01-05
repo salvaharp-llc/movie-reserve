@@ -52,17 +52,17 @@ WHERE refresh_tokens.token = $1
   AND refresh_tokens.revoked_at IS NULL
   AND refresh_tokens.expires_at > NOW()
   AND users.id = refresh_tokens.user_id
-RETURNING refresh_tokens.user_id, users.is_admin
+RETURNING refresh_tokens.user_id, users.role
 `
 
 type RevokeRefreshTokenRow struct {
-	UserID  uuid.UUID
-	IsAdmin bool
+	UserID uuid.UUID
+	Role   string
 }
 
 func (q *Queries) RevokeRefreshToken(ctx context.Context, token string) (RevokeRefreshTokenRow, error) {
 	row := q.db.QueryRowContext(ctx, revokeRefreshToken, token)
 	var i RevokeRefreshTokenRow
-	err := row.Scan(&i.UserID, &i.IsAdmin)
+	err := row.Scan(&i.UserID, &i.Role)
 	return i, err
 }

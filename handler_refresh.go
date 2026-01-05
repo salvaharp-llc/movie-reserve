@@ -40,11 +40,11 @@ func (cfg *apiConfig) handlerRefresh(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, err := auth.MakeJWT(
 		accessInfo.UserID,
-		accessInfo.IsAdmin,
+		accessInfo.Role,
 		cfg.JWTSecret,
 		auth.JwtExpiresIn)
 	if err != nil {
-		respondWithError(w, http.StatusUnauthorized, "Couldn't validate token", err)
+		respondWithError(w, http.StatusUnauthorized, "Could not create access JWT", err)
 		return
 	}
 

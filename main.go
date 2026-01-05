@@ -51,6 +51,10 @@ func main() {
 	mux.Handle("/app/", fsHandler)
 
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
+	// mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUsers)
+	// mux.HandleFunc("DELETE /api/users", apiCfg.handlerDeleteUsers)
+
+	// requireAuth and requireAdmin middleware
 
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 	mux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)

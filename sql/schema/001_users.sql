@@ -5,7 +5,7 @@ CREATE TABLE users(
     updated_at TIMESTAMP NOT NULL,
     email TEXT NOT NULL UNIQUE,
     hashed_password TEXT NOT NULL,
-    is_admin BOOLEAN NOT NULL DEFAULT false
+    role TEXT NOT NULL DEFAULT 'user'
 );
 
 -- +goose Down

@@ -15,7 +15,7 @@ type User struct {
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	Email     string    `json:"email"`
-	IsAdmin   bool      `json:"is_admin"`
+	Role      string    `json:"role"`
 }
 
 func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +56,7 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 			CreatedAt: user.CreatedAt,
 			UpdatedAt: user.UpdatedAt,
 			Email:     user.Email,
-			IsAdmin:   user.IsAdmin,
+			Role:      user.Role,
 		},
 	})
 }

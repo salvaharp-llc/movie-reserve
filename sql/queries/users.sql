@@ -10,7 +10,7 @@ VALUES (
 RETURNING *;
 
 -- name: MakeAdmin :one
-UPDATE users SET is_admin = true, updated_at = NOW()
+UPDATE users SET role = 'admin', updated_at = NOW()
 WHERE id = $1
 RETURNING *;
 
