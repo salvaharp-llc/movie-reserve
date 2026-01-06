@@ -44,7 +44,7 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	accessToken, err := auth.MakeJWT(user.ID, user.Role, cfg.JWTSecret, auth.JwtExpiresIn)
+	accessToken, err := auth.MakeJWT(user.ID, user.Role, cfg.jwtSecret, auth.JwtExpiresIn)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not create access JWT", err)
 		return

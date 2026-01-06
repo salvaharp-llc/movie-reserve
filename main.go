@@ -13,7 +13,8 @@ import (
 
 type apiConfig struct {
 	db        *database.Queries
-	JWTSecret string
+	jwtSecret string
+	platform  string
 }
 
 func main() {
@@ -29,6 +30,10 @@ func main() {
 	if JWTSecret == "" {
 		log.Fatal("JWT_SECRET must be set")
 	}
+	platform := os.Getenv("PLATFORM")
+	if platform == "" {
+		log.Fatal("PLATFORM must be set")
+	}
 
 	db, err := sql.Open("postgres", dbURL)
 	if err != nil {
@@ -38,27 +43,27 @@ func main() {
 
 	apiCfg := apiConfig{
 		db:        dbQueries,
-		JWTSecret: JWTSecret,
+		jwtSecret: JWTSecret,
+		platform:  platform,
 	}
 
 	if err := apiCfg.ensureAdmin(); err != nil {
 		log.Fatalf("Could not ensure admin user: %v", err)
 	}
-	log.Println("Admin user set")
 
 	mux := http.NewServeMux()
 	fsHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 	mux.Handle("/app/", fsHandler)
 
-	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
-	// mux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUsers)
-	// mux.HandleFunc("DELETE /api/users", apiCfg.handlerDeleteUsers)
+	mux.HandleFunc("GET /api/healthz", handlerReadiness)
 
-	// requireAuth and requireAdmin middleware
+	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
 
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 	mux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
 	mux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
+
+	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
 
 	server := http.Server{
 		Addr:    ":" + port,
