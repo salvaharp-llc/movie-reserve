@@ -65,6 +65,11 @@ func main() {
 
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
 
+	// authMux := http.NewServeMux()
+	// // authMux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUsers)
+	// // authMux.HandleFunc("DELETE /api/users", apiCfg.handlerDeleteUsers)
+	// mux.Handle("/", apiCfg.RequireAuth(authMux))
+
 	server := http.Server{
 		Addr:    ":" + port,
 		Handler: mux,

@@ -17,13 +17,6 @@ import (
 
 type TokenType string
 
-type UserRole string
-
-const (
-	RoleAdmin UserRole = "admin"
-	RoleUser  UserRole = "user"
-)
-
 type jwtClaims struct {
 	Role string `json:"role"`
 	jwt.RegisteredClaims
@@ -36,6 +29,9 @@ const (
 	JwtExpiresIn time.Duration = time.Hour
 	// RefreshTokenExpiresIn -
 	RefreshTokenExpiresIn time.Duration = 60 * 24 * time.Hour
+	// UserRoles
+	RoleAdmin string = "admin"
+	RoleUser  string = "user"
 )
 
 func HashPassword(password string) (string, error) {
@@ -114,7 +110,7 @@ func HashRefreshToken(token string) string {
 }
 
 func IsValidRole(r string) bool {
-	switch UserRole(r) {
+	switch r {
 	case RoleAdmin, RoleUser:
 		return true
 	default:
