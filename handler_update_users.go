@@ -18,15 +18,15 @@ func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request)
 		User
 	}
 
-	userID, ok := GetUserID(r.Context())
-	if !ok {
-		respondWithError(w, http.StatusInternalServerError, "Could not get user id", nil)
+	userID, err := GetUserID(r.Context())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not find user id", err)
 		return
 	}
 
 	decoder := json.NewDecoder(r.Body)
 	params := parameters{}
-	err := decoder.Decode(&params)
+	err = decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error decoding parameters", err)
 		return

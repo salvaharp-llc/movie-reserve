@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -19,13 +20,13 @@ func (cfg *apiConfig) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.GetBearerToken(r.Header)
 		if err != nil {
-			respondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+			respondWithError(w, http.StatusUnauthorized, "Could not get token from header", err)
 			return
 		}
 
 		userID, role, err := auth.ValidateJWT(token, cfg.jwtSecret)
 		if err != nil {
-			respondWithError(w, http.StatusUnauthorized, "Unauthorized", err)
+			respondWithError(w, http.StatusUnauthorized, "Invalid token", err)
 			return
 		}
 
@@ -39,14 +40,14 @@ func (cfg *apiConfig) RequireAuth(next http.Handler) http.Handler {
 // RequireAdmin should be chained after RequireAuth
 func RequireAdmin(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		role, ok := r.Context().Value(userRoleKey).(string)
-		if !ok {
-			respondWithError(w, http.StatusUnauthorized, "Unauthorized", nil)
+		role, err := GetUserRole(r.Context())
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Could not find user role", err)
 			return
 		}
 
 		if role != auth.RoleAdmin {
-			respondWithError(w, http.StatusForbidden, "Forbidden", nil)
+			respondWithError(w, http.StatusForbidden, "Admin users only", nil)
 			return
 		}
 
@@ -54,12 +55,18 @@ func RequireAdmin(next http.Handler) http.Handler {
 	})
 }
 
-func GetUserID(ctx context.Context) (uuid.UUID, bool) {
+func GetUserID(ctx context.Context) (uuid.UUID, error) {
 	userID, ok := ctx.Value(userIDKey).(uuid.UUID)
-	return userID, ok
+	if !ok {
+		return uuid.UUID{}, errors.New("user id missing from context; ensure RequireAuth middleware is applied")
+	}
+	return userID, nil
 }
 
-func GetUserRole(ctx context.Context) (string, bool) {
+func GetUserRole(ctx context.Context) (string, error) {
 	role, ok := ctx.Value(userRoleKey).(string)
-	return role, ok
+	if !ok {
+		return "", errors.New("user role missing from context; ensure RequireAuth middleware is applied")
+	}
+	return role, nil
 }
