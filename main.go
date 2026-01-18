@@ -57,6 +57,7 @@ func main() {
 
 	// Public routes (no auth required)
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
+
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 

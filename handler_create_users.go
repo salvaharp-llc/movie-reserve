@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -32,6 +33,15 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 	err := decoder.Decode(&params)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error decoding parameters", err)
+		return
+	}
+
+	if strings.TrimSpace(params.Email) == "" {
+		respondWithError(w, http.StatusBadRequest, "email required", nil)
+		return
+	}
+	if strings.TrimSpace(params.Password) == "" {
+		respondWithError(w, http.StatusBadRequest, "password required", nil)
 		return
 	}
 
