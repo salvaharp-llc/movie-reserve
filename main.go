@@ -55,20 +55,22 @@ func main() {
 	fsHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
 	mux.Handle("/app/", fsHandler)
 
+	// Public routes (no auth required)
 	mux.HandleFunc("GET /api/healthz", handlerReadiness)
-
 	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
-
 	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
-	mux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
-	mux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
 
+	// Routes requiring valid auth token
+	mux.HandleFunc("POST /api/refresh", apiCfg.RequireAuth(apiCfg.handlerRefresh))
+	mux.HandleFunc("POST /api/revoke", apiCfg.RequireAuth(apiCfg.handlerRevoke))
+
+	mux.HandleFunc("PUT /api/users", apiCfg.RequireAuth(apiCfg.handlerUpdateUsers))
+
+	// Routes requiring admin role
+	mux.HandleFunc("POST /api/movies", apiCfg.RequireAdmin(apiCfg.handlerCreateMovies))
+
+	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
-
-	authMux := http.NewServeMux()
-	authMux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUsers)
-	// // authMux.HandleFunc("DELETE /api/users", apiCfg.handlerDeleteUsers)
-	mux.Handle("/", apiCfg.RequireAuth(authMux))
 
 	server := http.Server{
 		Addr:    ":" + port,

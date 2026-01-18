@@ -16,8 +16,8 @@ const (
 	userRoleKey contextKey = "userRole"
 )
 
-func (cfg *apiConfig) RequireAuth(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.GetBearerToken(r.Header)
 		if err != nil {
 			respondWithError(w, http.StatusUnauthorized, "Could not get token from header", err)
@@ -33,13 +33,12 @@ func (cfg *apiConfig) RequireAuth(next http.Handler) http.Handler {
 		ctx := context.WithValue(r.Context(), userIDKey, userID)
 		ctx = context.WithValue(ctx, userRoleKey, role)
 
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
+		next(w, r.WithContext(ctx))
+	}
 }
 
-// RequireAdmin should be chained after RequireAuth
-func RequireAdmin(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return cfg.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
 		role, err := GetUserRole(r.Context())
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Could not find user role", err)
@@ -51,7 +50,7 @@ func RequireAdmin(next http.Handler) http.Handler {
 			return
 		}
 
-		next.ServeHTTP(w, r)
+		next(w, r)
 	})
 }
 

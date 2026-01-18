@@ -11,6 +11,32 @@ import (
 	"github.com/google/uuid"
 )
 
+type Genre struct {
+	ID        uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Name      string
+}
+
+type Movie struct {
+	ID             uuid.UUID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Title          string
+	Slug           string
+	Description    sql.NullString
+	RuntimeMinutes sql.NullInt32
+	ReleaseDate    sql.NullTime
+	PosterUrl      sql.NullString
+}
+
+type MovieGenre struct {
+	MovieID   uuid.UUID
+	GenreID   uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 type RefreshToken struct {
 	Token     string
 	CreatedAt time.Time
