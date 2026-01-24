@@ -150,7 +150,7 @@ func (q *Queries) GetMoviesByGenre(ctx context.Context, id uuid.UUID) ([]Movie, 
 
 const updateMovie = `-- name: UpdateMovie :one
 UPDATE movies
-SET title = $2, slug = $3, description = $4, runtime_minutes = $5, release_date = $6, poster_url = $7
+SET updated_at = NOW(), title = $2, slug = $3, description = $4, runtime_minutes = $5, release_date = $6, poster_url = $7
 WHERE id = $1
 RETURNING id, created_at, updated_at, title, slug, description, runtime_minutes, release_date, poster_url
 `

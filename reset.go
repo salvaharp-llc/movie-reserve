@@ -9,7 +9,7 @@ func (cfg *apiConfig) handlerReset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := cfg.db.Reset(r.Context()); err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error deleting users", err)
+		respondWithError(w, http.StatusInternalServerError, "Error reseting DB", err)
 		return
 	}
 

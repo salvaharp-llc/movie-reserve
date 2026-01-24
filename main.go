@@ -69,6 +69,8 @@ func main() {
 
 	// Routes requiring admin role
 	mux.HandleFunc("POST /api/movies", apiCfg.RequireAdmin(apiCfg.handlerCreateMovies))
+	mux.HandleFunc("PUT /api/movies/{movieID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateMovies))
+	// mux.HandleFunc("DELETE /api/movies/{movieID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteMovies))
 
 	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)

@@ -15,7 +15,7 @@ RETURNING *;
 
 -- name: UpdateMovie :one
 UPDATE movies
-SET title = $2, slug = $3, description = $4, runtime_minutes = $5, release_date = $6, poster_url = $7
+SET updated_at = NOW(), title = $2, slug = $3, description = $4, runtime_minutes = $5, release_date = $6, poster_url = $7
 WHERE id = $1
 RETURNING *;
 

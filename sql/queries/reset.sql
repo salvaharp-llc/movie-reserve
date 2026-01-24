@@ -1,4 +1,2 @@
 -- name: Reset :exec
-DELETE FROM users;
-DELETE FROM movies;
-DELETE FROM genres;
+TRUNCATE TABLE users, movies, genres RESTART IDENTITY CASCADE;
