@@ -72,6 +72,10 @@ func main() {
 	mux.HandleFunc("PUT /api/movies/{movieID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateMovies))
 	mux.HandleFunc("DELETE /api/movies/{movieID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteMovies))
 
+	mux.HandleFunc("POST /api/genres", apiCfg.RequireAdmin(apiCfg.handlerCreateGenres))
+	mux.HandleFunc("PUT /api/genres/{genreID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateGenres))
+	mux.HandleFunc("DELETE /api/genres/{genreID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteGenres))
+
 	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
 

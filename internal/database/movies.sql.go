@@ -84,6 +84,16 @@ func (q *Queries) CreateMovie(ctx context.Context, arg CreateMovieParams) (Movie
 	return i, err
 }
 
+const deleteGenre = `-- name: DeleteGenre :exec
+DELETE FROM genres
+WHERE id = $1
+`
+
+func (q *Queries) DeleteGenre(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteGenre, id)
+	return err
+}
+
 const deleteMovie = `-- name: DeleteMovie :exec
 DELETE FROM movies
 WHERE id = $1
@@ -156,6 +166,30 @@ func (q *Queries) GetMoviesByGenre(ctx context.Context, id uuid.UUID) ([]Movie, 
 		return nil, err
 	}
 	return items, nil
+}
+
+const updateGenre = `-- name: UpdateGenre :one
+UPDATE genres
+SET updated_at = NOW(), name = $2
+WHERE id = $1
+RETURNING id, created_at, updated_at, name
+`
+
+type UpdateGenreParams struct {
+	ID   uuid.UUID
+	Name string
+}
+
+func (q *Queries) UpdateGenre(ctx context.Context, arg UpdateGenreParams) (Genre, error) {
+	row := q.db.QueryRowContext(ctx, updateGenre, arg.ID, arg.Name)
+	var i Genre
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+	)
+	return i, err
 }
 
 const updateMovie = `-- name: UpdateMovie :one

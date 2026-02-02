@@ -41,6 +41,16 @@ VALUES (
 )
 RETURNING *;
 
+-- name: UpdateGenre :one
+UPDATE genres
+SET updated_at = NOW(), name = $2
+WHERE id = $1
+RETURNING *;
+
+-- name: DeleteGenre :exec
+DELETE FROM genres
+WHERE id = $1;
+
 -- name: DeleteMovie :exec
 DELETE FROM movies
 WHERE id = $1;
