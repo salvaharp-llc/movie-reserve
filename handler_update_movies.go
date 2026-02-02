@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"strings"
@@ -55,7 +56,11 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		ReleaseDate:    convertToNullTime(params.ReleaseDate),
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error updating movie", err)
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusBadRequest, "Movie not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't update movie", err)
 		return
 	}
 

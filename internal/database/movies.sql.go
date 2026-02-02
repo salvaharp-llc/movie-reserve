@@ -84,6 +84,16 @@ func (q *Queries) CreateMovie(ctx context.Context, arg CreateMovieParams) (Movie
 	return i, err
 }
 
+const deleteMovie = `-- name: DeleteMovie :exec
+DELETE FROM movies
+WHERE id = $1
+`
+
+func (q *Queries) DeleteMovie(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteMovie, id)
+	return err
+}
+
 const getMovieBySlug = `-- name: GetMovieBySlug :one
 SELECT id, created_at, updated_at, title, slug, description, runtime_minutes, release_date, poster_url FROM movies
 WHERE slug = $1

@@ -40,3 +40,7 @@ VALUES (
     $1
 )
 RETURNING *;
+
+-- name: DeleteMovie :exec
+DELETE FROM movies
+WHERE id = $1;
