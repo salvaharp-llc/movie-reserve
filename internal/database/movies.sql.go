@@ -10,29 +10,23 @@ import (
 	"database/sql"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
 )
 
-const createGenre = `-- name: CreateGenre :one
-INSERT INTO genres (id, created_at, updated_at, name)
-VALUES (
-    gen_random_uuid(),
-    NOW(),
-    NOW(),
-    $1
-)
-RETURNING id, created_at, updated_at, name
+const assignGenresToMovie = `-- name: AssignGenresToMovie :exec
+INSERT INTO movie_genre (movie_id, genre_id, created_at, updated_at)
+SELECT $1, unnest($2::uuid[]), NOW(), NOW()
+ON CONFLICT DO NOTHING
 `
 
-func (q *Queries) CreateGenre(ctx context.Context, name string) (Genre, error) {
-	row := q.db.QueryRowContext(ctx, createGenre, name)
-	var i Genre
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Name,
-	)
-	return i, err
+type AssignGenresToMovieParams struct {
+	MovieID uuid.UUID
+	Column2 []uuid.UUID
+}
+
+func (q *Queries) AssignGenresToMovie(ctx context.Context, arg AssignGenresToMovieParams) error {
+	_, err := q.db.ExecContext(ctx, assignGenresToMovie, arg.MovieID, pq.Array(arg.Column2))
+	return err
 }
 
 const createMovie = `-- name: CreateMovie :one
@@ -84,16 +78,6 @@ func (q *Queries) CreateMovie(ctx context.Context, arg CreateMovieParams) (Movie
 	return i, err
 }
 
-const deleteGenre = `-- name: DeleteGenre :exec
-DELETE FROM genres
-WHERE id = $1
-`
-
-func (q *Queries) DeleteGenre(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.ExecContext(ctx, deleteGenre, id)
-	return err
-}
-
 const deleteMovie = `-- name: DeleteMovie :exec
 DELETE FROM movies
 WHERE id = $1
@@ -101,6 +85,16 @@ WHERE id = $1
 
 func (q *Queries) DeleteMovie(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.ExecContext(ctx, deleteMovie, id)
+	return err
+}
+
+const deleteMovieGenres = `-- name: DeleteMovieGenres :exec
+DELETE FROM movie_genre
+WHERE movie_id = $1
+`
+
+func (q *Queries) DeleteMovieGenres(ctx context.Context, movieID uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, deleteMovieGenres, movieID)
 	return err
 }
 
@@ -166,30 +160,6 @@ func (q *Queries) GetMoviesByGenre(ctx context.Context, id uuid.UUID) ([]Movie, 
 		return nil, err
 	}
 	return items, nil
-}
-
-const updateGenre = `-- name: UpdateGenre :one
-UPDATE genres
-SET updated_at = NOW(), name = $2
-WHERE id = $1
-RETURNING id, created_at, updated_at, name
-`
-
-type UpdateGenreParams struct {
-	ID   uuid.UUID
-	Name string
-}
-
-func (q *Queries) UpdateGenre(ctx context.Context, arg UpdateGenreParams) (Genre, error) {
-	row := q.db.QueryRowContext(ctx, updateGenre, arg.ID, arg.Name)
-	var i Genre
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Name,
-	)
-	return i, err
 }
 
 const updateMovie = `-- name: UpdateMovie :one

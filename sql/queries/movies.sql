@@ -31,26 +31,15 @@ INNER JOIN genres g ON mg.genre_id = g.id
 WHERE g.id = $1
 ORDER BY m.created_at DESC;
 
--- name: CreateGenre :one
-INSERT INTO genres (id, created_at, updated_at, name)
-VALUES (
-    gen_random_uuid(),
-    NOW(),
-    NOW(),
-    $1
-)
-RETURNING *;
-
--- name: UpdateGenre :one
-UPDATE genres
-SET updated_at = NOW(), name = $2
-WHERE id = $1
-RETURNING *;
-
--- name: DeleteGenre :exec
-DELETE FROM genres
-WHERE id = $1;
-
 -- name: DeleteMovie :exec
 DELETE FROM movies
 WHERE id = $1;
+
+-- name: AssignGenresToMovie :exec
+INSERT INTO movie_genre (movie_id, genre_id, created_at, updated_at)
+SELECT $1, unnest($2::uuid[]), NOW(), NOW()
+ON CONFLICT DO NOTHING;
+
+-- name: DeleteMovieGenres :exec
+DELETE FROM movie_genre
+WHERE movie_id = $1;

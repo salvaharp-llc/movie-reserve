@@ -18,6 +18,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		Description     *string    `json:"description"`
 		RunetimeMinutes *int32     `json:"runetime_minutes"`
 		ReleaseDate     *time.Time `json:"release_date"`
+		GenreIDs        []string   `json:"genre_ids"`
 	}
 	type response struct {
 		Movie
@@ -47,6 +48,30 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	genreUUIDs := make([]uuid.UUID, len(params.GenreIDs))
+	for i, genreIDStr := range params.GenreIDs {
+		genreID, err := uuid.Parse(genreIDStr)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid genre ID format", err)
+			return
+		}
+		genreUUIDs[i] = genreID
+	}
+
+	var genres []database.Genre
+	if len(genreUUIDs) > 0 {
+		genres, err = cfg.db.GetGenresByIDs(r.Context(), genreUUIDs)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error fetching genres", err)
+			return
+		}
+
+		if len(genres) != len(genreUUIDs) {
+			respondWithError(w, http.StatusBadRequest, "One or more genre IDs not found", nil)
+			return
+		}
+	}
+
 	movie, err := cfg.db.UpdateMovie(r.Context(), database.UpdateMovieParams{
 		ID:             movieID,
 		Title:          params.Title,
@@ -64,6 +89,33 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if len(genreUUIDs) > 0 {
+		err = cfg.db.DeleteMovieGenres(r.Context(), movieID)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error deleting old genres", err)
+			return
+		}
+
+		err = cfg.db.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
+			MovieID: movieID,
+			Column2: genreUUIDs,
+		})
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Error assigning genres to movie", err)
+			return
+		}
+	}
+
+	responseGenres := make([]Genre, len(genres))
+	for i, dbGenre := range genres {
+		responseGenres[i] = Genre{
+			ID:        dbGenre.ID,
+			CreatedAt: dbGenre.CreatedAt,
+			UpdatedAt: dbGenre.UpdatedAt,
+			Name:      dbGenre.Name,
+		}
+	}
+
 	respondWithJSON(w, http.StatusOK, response{
 		Movie: Movie{
 			ID:              movie.ID,
@@ -74,6 +126,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 			Description:     nullStringToPointer(movie.Description),
 			RunetimeMinutes: nullInt32ToPointer(movie.RuntimeMinutes),
 			ReleaseDate:     nullTimeToPointer(movie.ReleaseDate),
+			Genres:          responseGenres,
 		},
 	})
 }
