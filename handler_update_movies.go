@@ -58,6 +58,16 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		genreUUIDs[i] = genreID
 	}
 
+	currentMovie, err := cfg.db.GetMovieByID(r.Context(), movieID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusBadRequest, "Movie not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch current movie", err)
+		return
+	}
+
 	var genres []database.Genre
 	if len(genreUUIDs) > 0 {
 		genres, err = cfg.db.GetGenresByIDs(r.Context(), genreUUIDs)
@@ -79,6 +89,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		Description:    convertToNullString(params.Description),
 		RuntimeMinutes: convertToNullInt32(params.RunetimeMinutes),
 		ReleaseDate:    convertToNullTime(params.ReleaseDate),
+		PosterUrl:      currentMovie.PosterUrl,
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -127,6 +138,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 			RunetimeMinutes: nullInt32ToPointer(movie.RuntimeMinutes),
 			ReleaseDate:     nullTimeToPointer(movie.ReleaseDate),
 			Genres:          responseGenres,
+			PosterUrl:       nullStringToPointer(movie.PosterUrl),
 		},
 	})
 }

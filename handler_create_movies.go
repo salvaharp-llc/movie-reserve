@@ -21,6 +21,7 @@ type Movie struct {
 	RunetimeMinutes *int32     `json:"runetime_minutes,omitempty"`
 	ReleaseDate     *time.Time `json:"release_date,omitempty"`
 	Genres          []Genre    `json:"genres,omitempty"`
+	PosterUrl       *string    `json:"poster_url,omitempty"`
 }
 
 func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request) {

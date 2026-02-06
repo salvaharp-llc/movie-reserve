@@ -1,4 +1,5 @@
 .vscode/
-requests
+requests/
+assets/
 .env
 movie-reserve
