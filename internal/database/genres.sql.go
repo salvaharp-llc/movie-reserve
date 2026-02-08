@@ -45,6 +45,55 @@ func (q *Queries) DeleteGenre(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const getGenreByID = `-- name: GetGenreByID :one
+SELECT id, created_at, updated_at, name FROM genres
+WHERE id = $1
+`
+
+func (q *Queries) GetGenreByID(ctx context.Context, id uuid.UUID) (Genre, error) {
+	row := q.db.QueryRowContext(ctx, getGenreByID, id)
+	var i Genre
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Name,
+	)
+	return i, err
+}
+
+const getGenres = `-- name: GetGenres :many
+SELECT id, created_at, updated_at, name FROM genres
+`
+
+func (q *Queries) GetGenres(ctx context.Context) ([]Genre, error) {
+	rows, err := q.db.QueryContext(ctx, getGenres)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Genre
+	for rows.Next() {
+		var i Genre
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getGenresByIDs = `-- name: GetGenresByIDs :many
 SELECT id, created_at, updated_at, name FROM genres
 WHERE id = ANY($1::uuid[])

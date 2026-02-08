@@ -18,7 +18,14 @@ RETURNING *;
 DELETE FROM genres
 WHERE id = $1;
 
+-- name: GetGenreByID :one
+SELECT * FROM genres
+WHERE id = $1;
+
 -- name: GetGenresByIDs :many
 SELECT * FROM genres
 WHERE id = ANY($1::uuid[])
 ORDER BY name;
+
+-- name: GetGenres :many
+SELECT * FROM genres;
