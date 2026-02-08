@@ -84,6 +84,8 @@ func main() {
 	mux.HandleFunc("GET /api/genres/{genreID}", apiCfg.handlerGetGenres)
 	mux.HandleFunc("GET /api/genres", apiCfg.handlerRetrieveGenres)
 
+	mux.HandleFunc("GET /api/movies/{movieID}", apiCfg.handlerGetMovies)
+
 	// Routes requiring valid auth token
 	mux.HandleFunc("POST /api/refresh", apiCfg.RequireAuth(apiCfg.handlerRefresh))
 	mux.HandleFunc("POST /api/revoke", apiCfg.RequireAuth(apiCfg.handlerRevoke))

@@ -28,4 +28,12 @@ WHERE id = ANY($1::uuid[])
 ORDER BY name;
 
 -- name: GetGenres :many
-SELECT * FROM genres;
+SELECT * FROM genres
+ORDER BY name;
+
+-- name: GetGenresByMovieID :many
+SELECT g.*
+FROM genres g
+INNER JOIN movie_genre mg ON g.id = mg.genre_id
+WHERE mg.movie_id = $1
+ORDER BY g.name;

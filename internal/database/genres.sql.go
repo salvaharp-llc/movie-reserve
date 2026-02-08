@@ -64,6 +64,7 @@ func (q *Queries) GetGenreByID(ctx context.Context, id uuid.UUID) (Genre, error)
 
 const getGenres = `-- name: GetGenres :many
 SELECT id, created_at, updated_at, name FROM genres
+ORDER BY name
 `
 
 func (q *Queries) GetGenres(ctx context.Context) ([]Genre, error) {
@@ -102,6 +103,42 @@ ORDER BY name
 
 func (q *Queries) GetGenresByIDs(ctx context.Context, dollar_1 []uuid.UUID) ([]Genre, error) {
 	rows, err := q.db.QueryContext(ctx, getGenresByIDs, pq.Array(dollar_1))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Genre
+	for rows.Next() {
+		var i Genre
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Name,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getGenresByMovieID = `-- name: GetGenresByMovieID :many
+SELECT g.id, g.created_at, g.updated_at, g.name
+FROM genres g
+INNER JOIN movie_genre mg ON g.id = mg.genre_id
+WHERE mg.movie_id = $1
+ORDER BY g.name
+`
+
+func (q *Queries) GetGenresByMovieID(ctx context.Context, movieID uuid.UUID) ([]Genre, error) {
+	rows, err := q.db.QueryContext(ctx, getGenresByMovieID, movieID)
 	if err != nil {
 		return nil, err
 	}

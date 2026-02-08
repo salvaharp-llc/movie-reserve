@@ -47,10 +47,3 @@ ON CONFLICT DO NOTHING;
 -- name: DeleteMovieGenres :exec
 DELETE FROM movie_genre
 WHERE movie_id = $1;
-
--- name: GetGenresByMovieID :many
-SELECT g.*
-FROM genres g
-INNER JOIN movie_genre mg ON g.id = mg.genre_id
-WHERE mg.movie_id = $1
-ORDER BY g.name;

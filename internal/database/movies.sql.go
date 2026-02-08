@@ -98,42 +98,6 @@ func (q *Queries) DeleteMovieGenres(ctx context.Context, movieID uuid.UUID) erro
 	return err
 }
 
-const getGenresByMovieID = `-- name: GetGenresByMovieID :many
-SELECT g.id, g.created_at, g.updated_at, g.name
-FROM genres g
-INNER JOIN movie_genre mg ON g.id = mg.genre_id
-WHERE mg.movie_id = $1
-ORDER BY g.name
-`
-
-func (q *Queries) GetGenresByMovieID(ctx context.Context, movieID uuid.UUID) ([]Genre, error) {
-	rows, err := q.db.QueryContext(ctx, getGenresByMovieID, movieID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Genre
-	for rows.Next() {
-		var i Genre
-		if err := rows.Scan(
-			&i.ID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Name,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
 const getMovieByID = `-- name: GetMovieByID :one
 SELECT id, created_at, updated_at, title, slug, description, runtime_minutes, release_date, poster_url FROM movies
 WHERE id = $1
