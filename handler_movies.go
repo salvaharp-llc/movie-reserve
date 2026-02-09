@@ -101,18 +101,16 @@ func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	rows, err := cfg.db.GetMovieWithGenresByID(r.Context(), movie.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch created movie", err)
+		return
+	}
+
+	createdMovie := aggregateMovieWithGenres(rows)
+
 	respondWithJSON(w, http.StatusCreated, response{
-		Movie: Movie{
-			ID:              movie.ID,
-			CreatedAt:       movie.CreatedAt,
-			UpdatedAt:       movie.UpdatedAt,
-			Title:           movie.Title,
-			Slug:            movie.Slug,
-			Description:     nullStringToPointer(movie.Description),
-			RunetimeMinutes: nullInt32ToPointer(movie.RuntimeMinutes),
-			ReleaseDate:     nullTimeToPointer(movie.ReleaseDate),
-			Genres:          convertDBGenres(genres),
-		},
+		Movie: createdMovie,
 	})
 }
 
@@ -128,35 +126,21 @@ func (cfg *apiConfig) handlerGetMovies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	movie, err := cfg.db.GetMovieByID(r.Context(), movieID)
+	rows, err := cfg.db.GetMovieWithGenresByID(r.Context(), movieID)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusNotFound, "Movie not found", err)
-			return
-		}
 		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch movie", err)
 		return
 	}
 
-	genres, err := cfg.db.GetGenresByMovieID(r.Context(), movie.ID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch genres for movie", err)
+	if len(rows) == 0 {
+		respondWithError(w, http.StatusNotFound, "Movie not found", nil)
 		return
 	}
 
+	movie := aggregateMovieWithGenres(rows)
+
 	respondWithJSON(w, http.StatusOK, response{
-		Movie: Movie{
-			ID:              movie.ID,
-			CreatedAt:       movie.CreatedAt,
-			UpdatedAt:       movie.UpdatedAt,
-			Title:           movie.Title,
-			Slug:            movie.Slug,
-			Description:     nullStringToPointer(movie.Description),
-			RunetimeMinutes: nullInt32ToPointer(movie.RuntimeMinutes),
-			ReleaseDate:     nullTimeToPointer(movie.ReleaseDate),
-			Genres:          convertDBGenres(genres),
-			PosterUrl:       nullStringToPointer(movie.PosterUrl),
-		},
+		Movie: movie,
 	})
 }
 
@@ -210,16 +194,15 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 	currentMovie, err := cfg.db.GetMovieByID(r.Context(), movieID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusBadRequest, "Movie not found", err)
+			respondWithError(w, http.StatusNotFound, "Movie not found", err)
 			return
 		}
 		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch current movie", err)
 		return
 	}
 
-	var genres []database.Genre
 	if len(genreUUIDs) > 0 {
-		genres, err = cfg.db.GetGenresByIDs(r.Context(), genreUUIDs)
+		genres, err := cfg.db.GetGenresByIDs(r.Context(), genreUUIDs)
 		if err != nil {
 			respondWithError(w, http.StatusInternalServerError, "Error fetching genres", err)
 			return
@@ -231,7 +214,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	movie, err := cfg.db.UpdateMovie(r.Context(), database.UpdateMovieParams{
+	_, err = cfg.db.UpdateMovie(r.Context(), database.UpdateMovieParams{
 		ID:             movieID,
 		Title:          params.Title,
 		Slug:           params.Slug,
@@ -241,10 +224,6 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		PosterUrl:      currentMovie.PosterUrl,
 	})
 	if err != nil {
-		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusBadRequest, "Movie not found", err)
-			return
-		}
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update movie", err)
 		return
 	}
@@ -266,19 +245,16 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		}
 	}
 
+	rows, err := cfg.db.GetMovieWithGenresByID(r.Context(), movieID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch updated movie", err)
+		return
+	}
+
+	updatedMovie := aggregateMovieWithGenres(rows)
+
 	respondWithJSON(w, http.StatusOK, response{
-		Movie: Movie{
-			ID:              movie.ID,
-			CreatedAt:       movie.CreatedAt,
-			UpdatedAt:       movie.UpdatedAt,
-			Title:           movie.Title,
-			Slug:            movie.Slug,
-			Description:     nullStringToPointer(movie.Description),
-			RunetimeMinutes: nullInt32ToPointer(movie.RuntimeMinutes),
-			ReleaseDate:     nullTimeToPointer(movie.ReleaseDate),
-			Genres:          convertDBGenres(genres),
-			PosterUrl:       nullStringToPointer(movie.PosterUrl),
-		},
+		Movie: updatedMovie,
 	})
 }
 
@@ -303,17 +279,42 @@ func (cfg *apiConfig) handlerDeleteMovies(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func convertDBGenres(dbGenres []database.Genre) []Genre {
-	out := make([]Genre, len(dbGenres))
-	for i, g := range dbGenres {
-		out[i] = Genre{
-			ID:        g.ID,
-			CreatedAt: g.CreatedAt,
-			UpdatedAt: g.UpdatedAt,
-			Name:      g.Name,
+func aggregateMovieWithGenres(rows []database.GetMovieWithGenresByIDRow) Movie {
+	if len(rows) == 0 {
+		return Movie{}
+	}
+
+	firstRow := rows[0]
+
+	genreMap := make(map[uuid.UUID]Genre)
+	for _, row := range rows {
+		if row.GenreID.Valid {
+			genreMap[row.GenreID.UUID] = Genre{
+				ID:        row.GenreID.UUID,
+				CreatedAt: row.GenreCreatedAt.Time,
+				UpdatedAt: row.GenreUpdatedAt.Time,
+				Name:      row.GenreName.String,
+			}
 		}
 	}
-	return out
+
+	genres := make([]Genre, 0, len(genreMap))
+	for _, g := range genreMap {
+		genres = append(genres, g)
+	}
+
+	return Movie{
+		ID:              firstRow.ID,
+		CreatedAt:       firstRow.CreatedAt,
+		UpdatedAt:       firstRow.UpdatedAt,
+		Title:           firstRow.Title,
+		Slug:            firstRow.Slug,
+		Description:     nullStringToPointer(firstRow.Description),
+		RunetimeMinutes: nullInt32ToPointer(firstRow.RuntimeMinutes),
+		ReleaseDate:     nullTimeToPointer(firstRow.ReleaseDate),
+		Genres:          genres,
+		PosterUrl:       nullStringToPointer(firstRow.PosterUrl),
+	}
 }
 
 // Helper functions to convert pointers to sql.Null types
