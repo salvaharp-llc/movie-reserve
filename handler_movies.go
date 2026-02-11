@@ -24,6 +24,22 @@ type Movie struct {
 	PosterUrl       *string    `json:"poster_url,omitempty"`
 }
 
+type movieGenreRowData struct {
+	id             uuid.UUID
+	createdAt      time.Time
+	updatedAt      time.Time
+	title          string
+	slug           string
+	description    sql.NullString
+	runtimeMinutes sql.NullInt32
+	releaseDate    sql.NullTime
+	posterUrl      sql.NullString
+	genreID        uuid.NullUUID
+	genreCreatedAt sql.NullTime
+	genreUpdatedAt sql.NullTime
+	genreName      sql.NullString
+}
+
 func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Title           string     `json:"title"`
@@ -107,7 +123,7 @@ func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	createdMovie := aggregateMovieWithGenres(rows)
+	createdMovie := aggregateMovieWithGenres(mapSlice(rows, adaptGetMovieWithGenresByIDRow))
 
 	respondWithJSON(w, http.StatusCreated, response{
 		Movie: createdMovie,
@@ -137,11 +153,67 @@ func (cfg *apiConfig) handlerGetMovies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	movie := aggregateMovieWithGenres(rows)
+	movie := aggregateMovieWithGenres(mapSlice(rows, adaptGetMovieWithGenresByIDRow))
 
 	respondWithJSON(w, http.StatusOK, response{
 		Movie: movie,
 	})
+}
+
+func (cfg *apiConfig) handlerRetrieveMovies(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Movies []Movie `json:"movies"`
+	}
+
+	var genreID uuid.UUID
+	genreIDString := r.URL.Query().Get("genre_id")
+	if genreIDString != "" {
+		parsedID, err := uuid.Parse(genreIDString)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid genre ID", err)
+			return
+		}
+		genreID = parsedID
+	}
+
+	if genreIDString != "" {
+		rows, err := cfg.db.GetMoviesWithGenresForGenreID(r.Context(), genreID)
+		if err != nil {
+			respondWithError(w, http.StatusInternalServerError, "Couldn't fetch movies for genre", err)
+			return
+		}
+
+		grouped := make(map[uuid.UUID][]database.GetMoviesWithGenresForGenreIDRow)
+		for _, row := range rows {
+			grouped[row.ID] = append(grouped[row.ID], row)
+		}
+
+		movies := make([]Movie, 0, len(grouped))
+		for _, grp := range grouped {
+			movies = append(movies, aggregateMovieWithGenres(mapSlice(grp, adaptGetMoviesWithGenresForGenreIDRow)))
+		}
+
+		respondWithJSON(w, http.StatusOK, response{Movies: movies})
+		return
+	}
+
+	rows, err := cfg.db.GetAllMoviesWithGenres(r.Context())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch movies", err)
+		return
+	}
+
+	grouped := make(map[uuid.UUID][]database.GetAllMoviesWithGenresRow)
+	for _, row := range rows {
+		grouped[row.ID] = append(grouped[row.ID], row)
+	}
+
+	movies := make([]Movie, 0, len(grouped))
+	for _, grp := range grouped {
+		movies = append(movies, aggregateMovieWithGenres(mapSlice(grp, adaptGetAllMoviesWithGenresRow)))
+	}
+
+	respondWithJSON(w, http.StatusOK, response{Movies: movies})
 }
 
 func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request) {
@@ -251,7 +323,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	updatedMovie := aggregateMovieWithGenres(rows)
+	updatedMovie := aggregateMovieWithGenres(mapSlice(rows, adaptGetMovieWithGenresByIDRow))
 
 	respondWithJSON(w, http.StatusOK, response{
 		Movie: updatedMovie,
@@ -279,7 +351,7 @@ func (cfg *apiConfig) handlerDeleteMovies(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func aggregateMovieWithGenres(rows []database.GetMovieWithGenresByIDRow) Movie {
+func aggregateMovieWithGenres(rows []movieGenreRowData) Movie {
 	if len(rows) == 0 {
 		return Movie{}
 	}
@@ -288,12 +360,12 @@ func aggregateMovieWithGenres(rows []database.GetMovieWithGenresByIDRow) Movie {
 
 	genreMap := make(map[uuid.UUID]Genre)
 	for _, row := range rows {
-		if row.GenreID.Valid {
-			genreMap[row.GenreID.UUID] = Genre{
-				ID:        row.GenreID.UUID,
-				CreatedAt: row.GenreCreatedAt.Time,
-				UpdatedAt: row.GenreUpdatedAt.Time,
-				Name:      row.GenreName.String,
+		if row.genreID.Valid {
+			genreMap[row.genreID.UUID] = Genre{
+				ID:        row.genreID.UUID,
+				CreatedAt: row.genreCreatedAt.Time,
+				UpdatedAt: row.genreUpdatedAt.Time,
+				Name:      row.genreName.String,
 			}
 		}
 	}
@@ -304,17 +376,79 @@ func aggregateMovieWithGenres(rows []database.GetMovieWithGenresByIDRow) Movie {
 	}
 
 	return Movie{
-		ID:              firstRow.ID,
-		CreatedAt:       firstRow.CreatedAt,
-		UpdatedAt:       firstRow.UpdatedAt,
-		Title:           firstRow.Title,
-		Slug:            firstRow.Slug,
-		Description:     nullStringToPointer(firstRow.Description),
-		RunetimeMinutes: nullInt32ToPointer(firstRow.RuntimeMinutes),
-		ReleaseDate:     nullTimeToPointer(firstRow.ReleaseDate),
+		ID:              firstRow.id,
+		CreatedAt:       firstRow.createdAt,
+		UpdatedAt:       firstRow.updatedAt,
+		Title:           firstRow.title,
+		Slug:            firstRow.slug,
+		Description:     nullStringToPointer(firstRow.description),
+		RunetimeMinutes: nullInt32ToPointer(firstRow.runtimeMinutes),
+		ReleaseDate:     nullTimeToPointer(firstRow.releaseDate),
 		Genres:          genres,
-		PosterUrl:       nullStringToPointer(firstRow.PosterUrl),
+		PosterUrl:       nullStringToPointer(firstRow.posterUrl),
 	}
+}
+
+func adaptGetMovieWithGenresByIDRow(r database.GetMovieWithGenresByIDRow) movieGenreRowData {
+	return movieGenreRowData{
+		id:             r.ID,
+		createdAt:      r.CreatedAt,
+		updatedAt:      r.UpdatedAt,
+		title:          r.Title,
+		slug:           r.Slug,
+		description:    r.Description,
+		runtimeMinutes: r.RuntimeMinutes,
+		releaseDate:    r.ReleaseDate,
+		posterUrl:      r.PosterUrl,
+		genreID:        r.GenreID,
+		genreCreatedAt: r.GenreCreatedAt,
+		genreUpdatedAt: r.GenreUpdatedAt,
+		genreName:      r.GenreName,
+	}
+}
+
+func adaptGetAllMoviesWithGenresRow(r database.GetAllMoviesWithGenresRow) movieGenreRowData {
+	return movieGenreRowData{
+		id:             r.ID,
+		createdAt:      r.CreatedAt,
+		updatedAt:      r.UpdatedAt,
+		title:          r.Title,
+		slug:           r.Slug,
+		description:    r.Description,
+		runtimeMinutes: r.RuntimeMinutes,
+		releaseDate:    r.ReleaseDate,
+		posterUrl:      r.PosterUrl,
+		genreID:        r.GenreID,
+		genreCreatedAt: r.GenreCreatedAt,
+		genreUpdatedAt: r.GenreUpdatedAt,
+		genreName:      r.GenreName,
+	}
+}
+
+func adaptGetMoviesWithGenresForGenreIDRow(r database.GetMoviesWithGenresForGenreIDRow) movieGenreRowData {
+	return movieGenreRowData{
+		id:             r.ID,
+		createdAt:      r.CreatedAt,
+		updatedAt:      r.UpdatedAt,
+		title:          r.Title,
+		slug:           r.Slug,
+		description:    r.Description,
+		runtimeMinutes: r.RuntimeMinutes,
+		releaseDate:    r.ReleaseDate,
+		posterUrl:      r.PosterUrl,
+		genreID:        r.GenreID,
+		genreCreatedAt: r.GenreCreatedAt,
+		genreUpdatedAt: r.GenreUpdatedAt,
+		genreName:      r.GenreName,
+	}
+}
+
+func mapSlice[T, U any](slice []T, fn func(T) U) []U {
+	result := make([]U, len(slice))
+	for i, v := range slice {
+		result[i] = fn(v)
+	}
+	return result
 }
 
 // Helper functions to convert pointers to sql.Null types

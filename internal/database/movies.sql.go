@@ -99,6 +99,69 @@ func (q *Queries) DeleteMovieGenres(ctx context.Context, movieID uuid.UUID) erro
 	return err
 }
 
+const getAllMoviesWithGenres = `-- name: GetAllMoviesWithGenres :many
+SELECT 
+    m.id, m.created_at, m.updated_at, m.title, m.slug, m.description, 
+    m.runtime_minutes, m.release_date, m.poster_url,
+    g.id AS genre_id, g.created_at AS genre_created_at, g.updated_at AS genre_updated_at, g.name AS genre_name
+FROM movies m
+LEFT JOIN movie_genre mg ON m.id = mg.movie_id
+LEFT JOIN genres g ON mg.genre_id = g.id
+`
+
+type GetAllMoviesWithGenresRow struct {
+	ID             uuid.UUID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Title          string
+	Slug           string
+	Description    sql.NullString
+	RuntimeMinutes sql.NullInt32
+	ReleaseDate    sql.NullTime
+	PosterUrl      sql.NullString
+	GenreID        uuid.NullUUID
+	GenreCreatedAt sql.NullTime
+	GenreUpdatedAt sql.NullTime
+	GenreName      sql.NullString
+}
+
+func (q *Queries) GetAllMoviesWithGenres(ctx context.Context) ([]GetAllMoviesWithGenresRow, error) {
+	rows, err := q.db.QueryContext(ctx, getAllMoviesWithGenres)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetAllMoviesWithGenresRow
+	for rows.Next() {
+		var i GetAllMoviesWithGenresRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Title,
+			&i.Slug,
+			&i.Description,
+			&i.RuntimeMinutes,
+			&i.ReleaseDate,
+			&i.PosterUrl,
+			&i.GenreID,
+			&i.GenreCreatedAt,
+			&i.GenreUpdatedAt,
+			&i.GenreName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getMovieByID = `-- name: GetMovieByID :one
 SELECT id, created_at, updated_at, title, slug, description, runtime_minutes, release_date, poster_url FROM movies
 WHERE id = $1
@@ -152,7 +215,6 @@ FROM movies m
 LEFT JOIN movie_genre mg ON m.id = mg.movie_id
 LEFT JOIN genres g ON mg.genre_id = g.id
 WHERE m.id = $1
-ORDER BY g.name
 `
 
 type GetMovieWithGenresByIDRow struct {
@@ -208,24 +270,42 @@ func (q *Queries) GetMovieWithGenresByID(ctx context.Context, id uuid.UUID) ([]G
 	return items, nil
 }
 
-const getMoviesByGenre = `-- name: GetMoviesByGenre :many
-SELECT DISTINCT m.id, m.created_at, m.updated_at, m.title, m.slug, m.description, m.runtime_minutes, m.release_date, m.poster_url
+const getMoviesWithGenresForGenreID = `-- name: GetMoviesWithGenresForGenreID :many
+SELECT 
+    m.id, m.created_at, m.updated_at, m.title, m.slug, m.description, 
+    m.runtime_minutes, m.release_date, m.poster_url,
+    g.id AS genre_id, g.created_at AS genre_created_at, g.updated_at AS genre_updated_at, g.name AS genre_name
 FROM movies m
-INNER JOIN movie_genre mg ON m.id = mg.movie_id
-INNER JOIN genres g ON mg.genre_id = g.id
+LEFT JOIN movie_genre mg ON m.id = mg.movie_id
+LEFT JOIN genres g ON mg.genre_id = g.id
 WHERE g.id = $1
-ORDER BY m.created_at DESC
 `
 
-func (q *Queries) GetMoviesByGenre(ctx context.Context, id uuid.UUID) ([]Movie, error) {
-	rows, err := q.db.QueryContext(ctx, getMoviesByGenre, id)
+type GetMoviesWithGenresForGenreIDRow struct {
+	ID             uuid.UUID
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	Title          string
+	Slug           string
+	Description    sql.NullString
+	RuntimeMinutes sql.NullInt32
+	ReleaseDate    sql.NullTime
+	PosterUrl      sql.NullString
+	GenreID        uuid.NullUUID
+	GenreCreatedAt sql.NullTime
+	GenreUpdatedAt sql.NullTime
+	GenreName      sql.NullString
+}
+
+func (q *Queries) GetMoviesWithGenresForGenreID(ctx context.Context, id uuid.UUID) ([]GetMoviesWithGenresForGenreIDRow, error) {
+	rows, err := q.db.QueryContext(ctx, getMoviesWithGenresForGenreID, id)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Movie
+	var items []GetMoviesWithGenresForGenreIDRow
 	for rows.Next() {
-		var i Movie
+		var i GetMoviesWithGenresForGenreIDRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.CreatedAt,
@@ -236,6 +316,10 @@ func (q *Queries) GetMoviesByGenre(ctx context.Context, id uuid.UUID) ([]Movie, 
 			&i.RuntimeMinutes,
 			&i.ReleaseDate,
 			&i.PosterUrl,
+			&i.GenreID,
+			&i.GenreCreatedAt,
+			&i.GenreUpdatedAt,
+			&i.GenreName,
 		); err != nil {
 			return nil, err
 		}
