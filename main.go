@@ -87,6 +87,9 @@ func main() {
 	mux.HandleFunc("GET /api/movies/{movieID}", apiCfg.handlerGetMovies)
 	mux.HandleFunc("GET /api/movies", apiCfg.handlerRetrieveMovies)
 
+	mux.HandleFunc("GET /api/rooms/{roomID}", apiCfg.handlerGetRooms)
+	mux.HandleFunc("GET /api/rooms", apiCfg.handlerRetrieveRooms)
+
 	// Routes requiring valid auth token
 	mux.HandleFunc("POST /api/refresh", apiCfg.RequireAuth(apiCfg.handlerRefresh))
 	mux.HandleFunc("POST /api/revoke", apiCfg.RequireAuth(apiCfg.handlerRevoke))
@@ -102,6 +105,10 @@ func main() {
 	mux.HandleFunc("POST /api/genres", apiCfg.RequireAdmin(apiCfg.handlerCreateGenres))
 	mux.HandleFunc("PUT /api/genres/{genreID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateGenres))
 	mux.HandleFunc("DELETE /api/genres/{genreID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteGenres))
+
+	mux.HandleFunc("POST /api/rooms", apiCfg.RequireAdmin(apiCfg.handlerCreateRooms))
+	mux.HandleFunc("PUT /api/rooms/{roomID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateRooms))
+	mux.HandleFunc("DELETE /api/rooms/{roomID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteRooms))
 
 	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
