@@ -56,6 +56,10 @@ func (cfg *apiConfig) handlerCreateRooms(w http.ResponseWriter, r *http.Request)
 }
 
 func (cfg *apiConfig) handlerGetRooms(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Room
+	}
+
 	roomIDString := r.PathValue("roomID")
 	roomID, err := uuid.Parse(roomIDString)
 	if err != nil {
@@ -65,21 +69,53 @@ func (cfg *apiConfig) handlerGetRooms(w http.ResponseWriter, r *http.Request) {
 
 	room, err := cfg.db.GetRoomByID(r.Context(), roomID)
 	if err != nil {
-		respondWithError(w, http.StatusNotFound, "Couldn't get room", err)
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Room not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get room", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, room)
+	respondWithJSON(w, http.StatusOK, response{
+		Room: Room{
+			ID:        room.ID,
+			CreatedAt: room.CreatedAt,
+			UpdatedAt: room.UpdatedAt,
+			Name:      room.Name,
+		},
+	})
 }
 
 func (cfg *apiConfig) handlerRetrieveRooms(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Rooms []Room `json:"rooms"`
+	}
+
 	rooms, err := cfg.db.GetRooms(r.Context())
 	if err != nil {
-		respondWithError(w, http.StatusNotFound, "Couldn't get rooms", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get rooms", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, rooms)
+	if len(rooms) == 0 {
+		respondWithError(w, http.StatusNotFound, "Rooms not found", nil)
+		return
+	}
+
+	responseRooms := make([]Room, len(rooms))
+	for i, room := range rooms {
+		responseRooms[i] = Room{
+			ID:        room.ID,
+			CreatedAt: room.CreatedAt,
+			UpdatedAt: room.UpdatedAt,
+			Name:      room.Name,
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, response{
+		Rooms: responseRooms,
+	})
 }
 
 func (cfg *apiConfig) handlerUpdateRooms(w http.ResponseWriter, r *http.Request) {

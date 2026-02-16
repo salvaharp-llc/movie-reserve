@@ -56,6 +56,10 @@ func (cfg *apiConfig) handlerCreateGenres(w http.ResponseWriter, r *http.Request
 }
 
 func (cfg *apiConfig) handlerGetGenres(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Genre
+	}
+
 	genreIDString := r.PathValue("genreID")
 	genreID, err := uuid.Parse(genreIDString)
 	if err != nil {
@@ -65,21 +69,53 @@ func (cfg *apiConfig) handlerGetGenres(w http.ResponseWriter, r *http.Request) {
 
 	genre, err := cfg.db.GetGenreByID(r.Context(), genreID)
 	if err != nil {
-		respondWithError(w, http.StatusNotFound, "Couldn't get genre", err)
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Genre not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get genre", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, genre)
+	respondWithJSON(w, http.StatusOK, response{
+		Genre: Genre{
+			ID:        genre.ID,
+			CreatedAt: genre.CreatedAt,
+			UpdatedAt: genre.UpdatedAt,
+			Name:      genre.Name,
+		},
+	})
 }
 
 func (cfg *apiConfig) handlerRetrieveGenres(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Genres []Genre `json:"genres"`
+	}
+
 	genres, err := cfg.db.GetGenres(r.Context())
 	if err != nil {
-		respondWithError(w, http.StatusNotFound, "Couldn't get genres", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get genres", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, genres)
+	if len(genres) == 0 {
+		respondWithError(w, http.StatusNotFound, "Genres not found", nil)
+		return
+	}
+
+	responseGenres := make([]Genre, len(genres))
+	for i, genre := range genres {
+		responseGenres[i] = Genre{
+			ID:        genre.ID,
+			CreatedAt: genre.CreatedAt,
+			UpdatedAt: genre.UpdatedAt,
+			Name:      genre.Name,
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, response{
+		Genres: responseGenres,
+	})
 }
 
 func (cfg *apiConfig) handlerUpdateGenres(w http.ResponseWriter, r *http.Request) {
