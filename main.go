@@ -90,6 +90,9 @@ func main() {
 	mux.HandleFunc("GET /api/rooms/{roomID}", apiCfg.handlerGetRooms)
 	mux.HandleFunc("GET /api/rooms", apiCfg.handlerRetrieveRooms)
 
+	mux.HandleFunc("GET /api/screenings/{screeningID}", apiCfg.handlerGetScreenings)
+	mux.HandleFunc("GET /api/screenings", apiCfg.handlerRetrieveScreenings) // Only upcoming screenings for public
+
 	// Routes requiring valid auth token
 	mux.HandleFunc("POST /api/refresh", apiCfg.RequireAuth(apiCfg.handlerRefresh))
 	mux.HandleFunc("POST /api/revoke", apiCfg.RequireAuth(apiCfg.handlerRevoke))
@@ -109,6 +112,11 @@ func main() {
 	mux.HandleFunc("POST /api/rooms", apiCfg.RequireAdmin(apiCfg.handlerCreateRooms))
 	mux.HandleFunc("PUT /api/rooms/{roomID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateRooms))
 	mux.HandleFunc("DELETE /api/rooms/{roomID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteRooms))
+
+	mux.HandleFunc("POST /api/screenings", apiCfg.RequireAdmin(apiCfg.handlerCreateScreenings))
+	mux.HandleFunc("GET /api/screenings/all", apiCfg.RequireAdmin(apiCfg.handlerRetrieveScreeningsAdmin)) // Non-limited dates for admin
+	mux.HandleFunc("PUT /api/screenings/{screeningID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateScreenings))
+	mux.HandleFunc("DELETE /api/screenings/{screeningID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteScreenings))
 
 	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
