@@ -46,6 +46,16 @@ type RefreshToken struct {
 	RevokedAt sql.NullTime
 }
 
+type Reservation struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	ScreeningID uuid.UUID
+	RoomID      uuid.UUID
+	SeatID      uuid.UUID
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
 type Room struct {
 	ID        uuid.UUID
 	Name      string
@@ -61,6 +71,15 @@ type Screening struct {
 	EndTime   time.Time
 	CreatedAt time.Time
 	UpdatedAt time.Time
+}
+
+type Seat struct {
+	ID         uuid.UUID
+	RoomID     uuid.UUID
+	RowLabel   string
+	SeatNumber int32
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
 }
 
 type User struct {
