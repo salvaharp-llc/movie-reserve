@@ -102,6 +102,11 @@ func main() {
 	// Routes requiring valid auth token
 	mux.HandleFunc("PUT /api/users", apiCfg.RequireAuth(apiCfg.handlerUpdateUsers))
 
+	mux.HandleFunc("POST /api/reservations", apiCfg.RequireAuth(apiCfg.handlerCreateReservations))
+	mux.HandleFunc("GET /api/reservations", apiCfg.RequireAuth(apiCfg.handlerRetrieveReservations)) // Only user's reservations for public
+	mux.HandleFunc("GET /api/reservations/{reservationID}", apiCfg.RequireAuth(apiCfg.handlerGetReservations))
+	mux.HandleFunc("DELETE /api/reservations/{reservationID}", apiCfg.RequireAuth(apiCfg.handlerDeleteReservations))
+
 	// Routes requiring admin role
 	mux.HandleFunc("POST /api/movies", apiCfg.RequireAdmin(apiCfg.handlerCreateMovies))
 	mux.HandleFunc("PUT /api/movies/{movieID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateMovies))
@@ -124,6 +129,9 @@ func main() {
 	mux.HandleFunc("POST /api/seats", apiCfg.RequireAdmin(apiCfg.handlerCreateSeats))
 	mux.HandleFunc("PUT /api/seats/{seatID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateSeats))
 	mux.HandleFunc("DELETE /api/seats/{seatID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteSeats))
+
+	mux.HandleFunc("GET /api/reservations/all", apiCfg.RequireAdmin(apiCfg.handlerRetrieveReservationsAdmin)) // Non-limited reservations for admin
+	mux.HandleFunc("PUT /api/reservations/{reservationID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateReservations))
 
 	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
