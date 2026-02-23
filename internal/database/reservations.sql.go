@@ -77,7 +77,7 @@ func (q *Queries) GetReservationByID(ctx context.Context, id uuid.UUID) (Reserva
 	return i, err
 }
 
-const getReservationsAdmin = `-- name: GetReservationsAdmin :many
+const getReservations = `-- name: GetReservations :many
 SELECT r.id, r.user_id, r.screening_id, r.room_id, r.seat_id, r.created_at, r.updated_at FROM reservations r
 JOIN screenings s ON r.screening_id = s.id
 WHERE ($1::uuid IS NULL OR r.user_id = $1)
@@ -89,7 +89,7 @@ LIMIT $6
 OFFSET $5
 `
 
-type GetReservationsAdminParams struct {
+type GetReservationsParams struct {
 	UserID      uuid.NullUUID
 	ScreeningID uuid.NullUUID
 	MovieID     uuid.NullUUID
@@ -98,8 +98,8 @@ type GetReservationsAdminParams struct {
 	Limit       int32
 }
 
-func (q *Queries) GetReservationsAdmin(ctx context.Context, arg GetReservationsAdminParams) ([]Reservation, error) {
-	rows, err := q.db.QueryContext(ctx, getReservationsAdmin,
+func (q *Queries) GetReservations(ctx context.Context, arg GetReservationsParams) ([]Reservation, error) {
+	rows, err := q.db.QueryContext(ctx, getReservations,
 		arg.UserID,
 		arg.ScreeningID,
 		arg.MovieID,

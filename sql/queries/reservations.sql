@@ -21,7 +21,7 @@ SELECT * FROM reservations
 WHERE user_id = $1
 ORDER BY created_at DESC;
 
--- name: GetReservationsAdmin :many
+-- name: GetReservations :many
 SELECT r.* FROM reservations r
 JOIN screenings s ON r.screening_id = s.id
 WHERE (sqlc.narg('user_id')::uuid IS NULL OR r.user_id = sqlc.narg('user_id'))

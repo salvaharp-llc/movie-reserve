@@ -177,11 +177,7 @@ func (cfg *apiConfig) handlerRetrieveReservationsAdmin(w http.ResponseWriter, r 
 
 	q := r.URL.Query()
 
-	screeningIDString := q.Get("screening_id")
-	roomIDString := q.Get("room_id")
-	movieIDString := q.Get("movie_id")
-
-	if screeningIDString != "" && (roomIDString != "" || movieIDString != "") {
+	if q.Get("screening_id") != "" && (q.Get("room_id") != "" || q.Get("movie_id") != "") {
 		respondWithError(w, http.StatusBadRequest, "Cannot specify both screening_id and room_id or movie_id", nil)
 		return
 	}
@@ -216,7 +212,7 @@ func (cfg *apiConfig) handlerRetrieveReservationsAdmin(w http.ResponseWriter, r 
 		uuidParams[key] = parsed
 	}
 
-	reservations, err := cfg.db.GetReservationsAdmin(r.Context(), database.GetReservationsAdminParams{
+	reservations, err := cfg.db.GetReservations(r.Context(), database.GetReservationsParams{
 		UserID:      uuidParams["user_id"],
 		ScreeningID: uuidParams["screening_id"],
 		MovieID:     uuidParams["movie_id"],

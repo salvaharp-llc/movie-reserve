@@ -25,37 +25,13 @@ WHERE id = $1;
 SELECT * FROM screenings
 WHERE id = $1;
 
--- name: GetScreeningsPaginated :many
-SELECT * FROM screenings
+-- name: GetScreenings :many
+SELECT * FROM screenings s
+WHERE (sqlc.narg('movie_id')::uuid IS NULL OR s.movie_id = sqlc.narg('movie_id'))
+  AND (sqlc.narg('room_id')::uuid IS NULL OR s.room_id = sqlc.narg('room_id'))
+  AND (sqlc.narg('from')::timestampt IS NULL OR s.start_time >= sqlc.narg('from'))
+  AND (sqlc.narg('to')::timestampt IS NULL OR s.start_time <= sqlc.narg('to'))
+  AND (sqlc.arg('upcoming')::bool IS FALSE OR s.start_time >= NOW())
 ORDER BY start_time
-LIMIT $1 OFFSET $2;
-
--- name: GetScreeningsByMovieID :many
-SELECT * FROM screenings
-WHERE movie_id = $1
-ORDER BY start_time;
-
--- name: GetUpcomingScreeningsByMovieID :many
-SELECT * FROM screenings
-WHERE movie_id = $1 AND start_time >= NOW()
-ORDER BY start_time;
-
--- name: GetScreeningsByDateRange :many
-SELECT * FROM screenings
-WHERE start_time >= $1 AND start_time <= $2
-ORDER BY start_time;
-
--- name: GetUpcomingScreeningsByDateRange :many
-SELECT * FROM screenings
-WHERE start_time >= NOW() AND start_time >= $1 AND start_time <= $2
-ORDER BY start_time;
-
--- name: GetScreeningsByMovieIDAndDateRange :many
-SELECT * FROM screenings
-WHERE movie_id = $1 AND start_time >= $2 AND start_time <= $3
-ORDER BY start_time;
-
--- name: GetUpcomingScreeningsByMovieIDAndDateRange :many
-SELECT * FROM screenings
-WHERE movie_id = $1 AND start_time >= NOW() AND start_time >= $2 AND start_time <= $3
-ORDER BY start_time;
+LIMIT sqlc.arg('limit')
+OFFSET sqlc.arg('offset');

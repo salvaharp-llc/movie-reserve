@@ -125,61 +125,64 @@ func (cfg *apiConfig) handlerRetrieveScreenings(w http.ResponseWriter, r *http.R
 		Screenings []Screening `json:"screenings"`
 	}
 
-	movieIDStr := r.URL.Query().Get("movie_id")
-	fromStr := r.URL.Query().Get("from")
-	toStr := r.URL.Query().Get("to")
+	q := r.URL.Query()
 
-	var movieID uuid.UUID
-	var from, to time.Time
-	var err error
-
-	hasMovieID := movieIDStr != ""
-	hasDateRange := fromStr != "" && toStr != ""
-
-	if hasMovieID {
-		movieID, err = uuid.Parse(movieIDStr)
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid movie_id", err)
-			return
-		}
-	}
-
-	if hasDateRange {
-		from, err = time.Parse(time.RFC3339, fromStr)
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid 'from' date, expected RFC3339 format", err)
-			return
-		}
-		to, err = time.Parse(time.RFC3339, toStr)
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid 'to' date, expected RFC3339 format", err)
-			return
-		}
-	}
-
-	var screenings []database.Screening
-
-	switch {
-	case hasMovieID && hasDateRange:
-		screenings, err = cfg.db.GetUpcomingScreeningsByMovieIDAndDateRange(r.Context(), database.GetUpcomingScreeningsByMovieIDAndDateRangeParams{
-			MovieID:     movieID,
-			StartTime:   from,
-			StartTime_2: to,
-		})
-
-	case hasMovieID:
-		screenings, err = cfg.db.GetUpcomingScreeningsByMovieID(r.Context(), movieID)
-
-	case hasDateRange:
-		screenings, err = cfg.db.GetUpcomingScreeningsByDateRange(r.Context(), database.GetUpcomingScreeningsByDateRangeParams{
-			StartTime:   from,
-			StartTime_2: to,
-		})
-
-	default:
-		respondWithError(w, http.StatusBadRequest, "Provide either 'movie_id' or 'from' and 'to' query params", nil)
+	if q.Get("movie_id") == "" && (q.Get("from") == "" || q.Get("to") == "") {
+		respondWithError(w, http.StatusBadRequest, "Provide either 'movie_id' or both 'from' and 'to' query params", nil)
 		return
 	}
+
+	limit, offset := 100, 0
+
+	if limitStr := q.Get("limit"); limitStr != "" {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil || parsed < 1 {
+			respondWithError(w, http.StatusBadRequest, "Invalid limit", err)
+			return
+		}
+		limit = parsed
+	}
+
+	if offsetStr := q.Get("offset"); offsetStr != "" {
+		parsed, err := strconv.Atoi(offsetStr)
+		if err != nil || parsed < 0 {
+			respondWithError(w, http.StatusBadRequest, "Invalid offset", err)
+			return
+		}
+		offset = parsed
+	}
+
+	uuidParams := map[string]uuid.NullUUID{}
+	for _, key := range []string{"movie_id"} {
+		parsed, err := parseNullUUID(q.Get(key))
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid "+key, err)
+			return
+		}
+		uuidParams[key] = parsed
+	}
+	timeParams := map[string]sql.NullTime{}
+	for _, key := range []string{"from", "to"} {
+		parsed, err := parseNullTime(q.Get(key))
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid "+key+" date", err)
+			return
+		}
+		timeParams[key] = parsed
+	}
+
+	if !timeParams["from"].Valid || timeParams["from"].Time.Before(time.Now()) {
+		timeParams["from"] = sql.NullTime{Time: time.Now(), Valid: true}
+	}
+
+	screenings, err := cfg.db.GetScreenings(r.Context(), database.GetScreeningsParams{
+		MovieID:  uuidParams["movie_id"],
+		From:     timeParams["from"],
+		To:       timeParams["to"],
+		Upcoming: true,
+		Limit:    int32(limit),
+		Offset:   int32(offset),
+	})
 
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get screenings", err)
@@ -212,86 +215,57 @@ func (cfg *apiConfig) handlerRetrieveScreeningsAdmin(w http.ResponseWriter, r *h
 		Screenings []Screening `json:"screenings"`
 	}
 
-	movieIDStr := r.URL.Query().Get("movie_id")
-	fromStr := r.URL.Query().Get("from")
-	toStr := r.URL.Query().Get("to")
-	limitStr := r.URL.Query().Get("limit")
-	offsetStr := r.URL.Query().Get("offset")
+	q := r.URL.Query()
 
-	limit := 100 // sensible default
-	offset := 0
+	limit, offset := 100, 0
 
-	if limitStr != "" {
-		parsedLimit, err := strconv.Atoi(limitStr)
-		if err != nil || parsedLimit < 1 {
+	if limitStr := q.Get("limit"); limitStr != "" {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil || parsed < 1 {
 			respondWithError(w, http.StatusBadRequest, "Invalid limit", err)
 			return
 		}
-		limit = parsedLimit
+		limit = parsed
 	}
 
-	if offsetStr != "" {
-		parsedOffset, err := strconv.Atoi(offsetStr)
-		if err != nil || parsedOffset < 0 {
+	if offsetStr := q.Get("offset"); offsetStr != "" {
+		parsed, err := strconv.Atoi(offsetStr)
+		if err != nil || parsed < 0 {
 			respondWithError(w, http.StatusBadRequest, "Invalid offset", err)
 			return
 		}
-		offset = parsedOffset
+		offset = parsed
 	}
 
-	var movieID uuid.UUID
-	var from, to time.Time
-	var err error
-
-	hasMovieID := movieIDStr != ""
-	hasDateRange := fromStr != "" && toStr != ""
-
-	if hasMovieID {
-		movieID, err = uuid.Parse(movieIDStr)
+	uuidParams := map[string]uuid.NullUUID{}
+	for _, key := range []string{"movie_id", "room_id"} {
+		parsed, err := parseNullUUID(q.Get(key))
 		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid movie_id", err)
+			respondWithError(w, http.StatusBadRequest, "Invalid "+key, err)
 			return
 		}
+		uuidParams[key] = parsed
 	}
 
-	if hasDateRange {
-		from, err = time.Parse(time.RFC3339, fromStr)
+	timeParams := map[string]sql.NullTime{}
+	for _, key := range []string{"from", "to"} {
+		parsed, err := parseNullTime(q.Get(key))
 		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid 'from' date", err)
+			respondWithError(w, http.StatusBadRequest, "Invalid "+key+" date", err)
 			return
 		}
-		to, err = time.Parse(time.RFC3339, toStr)
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid 'to' date", err)
-			return
-		}
+		timeParams[key] = parsed
 	}
 
-	var screenings []database.Screening
-
-	switch {
-	case hasMovieID && hasDateRange:
-		screenings, err = cfg.db.GetScreeningsByMovieIDAndDateRange(r.Context(), database.GetScreeningsByMovieIDAndDateRangeParams{
-			MovieID:     movieID,
-			StartTime:   from,
-			StartTime_2: to,
-		})
-
-	case hasMovieID:
-		screenings, err = cfg.db.GetScreeningsByMovieID(r.Context(), movieID)
-
-	case hasDateRange:
-		screenings, err = cfg.db.GetScreeningsByDateRange(r.Context(), database.GetScreeningsByDateRangeParams{
-			StartTime:   from,
-			StartTime_2: to,
-		})
-
-	default:
-		screenings, err = cfg.db.GetScreeningsPaginated(r.Context(), database.GetScreeningsPaginatedParams{
-			Limit:  int32(limit),
-			Offset: int32(offset),
-		})
-	}
+	screenings, err := cfg.db.GetScreenings(r.Context(), database.GetScreeningsParams{
+		MovieID:  uuidParams["movie_id"],
+		RoomID:   uuidParams["room_id"],
+		From:     timeParams["from"],
+		To:       timeParams["to"],
+		Upcoming: false,
+		Limit:    int32(limit),
+		Offset:   int32(offset),
+	})
 
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get screenings", err)
@@ -400,4 +374,16 @@ func (cfg *apiConfig) handlerDeleteScreenings(w http.ResponseWriter, r *http.Req
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func parseNullTime(s string) (sql.NullTime, error) {
+	if s == "" {
+		return sql.NullTime{}, nil
+	}
+
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return sql.NullTime{}, err
+	}
+	return sql.NullTime{Time: t, Valid: true}, nil
 }

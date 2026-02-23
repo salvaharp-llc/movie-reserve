@@ -83,263 +83,38 @@ func (q *Queries) GetScreeningByID(ctx context.Context, id uuid.UUID) (Screening
 	return i, err
 }
 
-const getScreeningsByDateRange = `-- name: GetScreeningsByDateRange :many
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings
-WHERE start_time >= $1 AND start_time <= $2
+const getScreenings = `-- name: GetScreenings :many
+SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings s
+WHERE ($1::uuid IS NULL OR s.movie_id = $1)
+  AND ($2::uuid IS NULL OR s.room_id = $2)
+  AND ($3::timestampt IS NULL OR s.start_time >= $3)
+  AND ($4::timestampt IS NULL OR s.start_time <= $4)
+  AND ($5::bool IS FALSE OR s.start_time >= NOW())
 ORDER BY start_time
+LIMIT $7
+OFFSET $6
 `
 
-type GetScreeningsByDateRangeParams struct {
-	StartTime   time.Time
-	StartTime_2 time.Time
+type GetScreeningsParams struct {
+	MovieID  uuid.NullUUID
+	RoomID   uuid.NullUUID
+	From     interface{}
+	To       interface{}
+	Upcoming bool
+	Offset   int32
+	Limit    int32
 }
 
-func (q *Queries) GetScreeningsByDateRange(ctx context.Context, arg GetScreeningsByDateRangeParams) ([]Screening, error) {
-	rows, err := q.db.QueryContext(ctx, getScreeningsByDateRange, arg.StartTime, arg.StartTime_2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Screening
-	for rows.Next() {
-		var i Screening
-		if err := rows.Scan(
-			&i.ID,
-			&i.MovieID,
-			&i.RoomID,
-			&i.StartTime,
-			&i.EndTime,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getScreeningsByMovieID = `-- name: GetScreeningsByMovieID :many
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings
-WHERE movie_id = $1
-ORDER BY start_time
-`
-
-func (q *Queries) GetScreeningsByMovieID(ctx context.Context, movieID uuid.UUID) ([]Screening, error) {
-	rows, err := q.db.QueryContext(ctx, getScreeningsByMovieID, movieID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Screening
-	for rows.Next() {
-		var i Screening
-		if err := rows.Scan(
-			&i.ID,
-			&i.MovieID,
-			&i.RoomID,
-			&i.StartTime,
-			&i.EndTime,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getScreeningsByMovieIDAndDateRange = `-- name: GetScreeningsByMovieIDAndDateRange :many
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings
-WHERE movie_id = $1 AND start_time >= $2 AND start_time <= $3
-ORDER BY start_time
-`
-
-type GetScreeningsByMovieIDAndDateRangeParams struct {
-	MovieID     uuid.UUID
-	StartTime   time.Time
-	StartTime_2 time.Time
-}
-
-func (q *Queries) GetScreeningsByMovieIDAndDateRange(ctx context.Context, arg GetScreeningsByMovieIDAndDateRangeParams) ([]Screening, error) {
-	rows, err := q.db.QueryContext(ctx, getScreeningsByMovieIDAndDateRange, arg.MovieID, arg.StartTime, arg.StartTime_2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Screening
-	for rows.Next() {
-		var i Screening
-		if err := rows.Scan(
-			&i.ID,
-			&i.MovieID,
-			&i.RoomID,
-			&i.StartTime,
-			&i.EndTime,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getScreeningsPaginated = `-- name: GetScreeningsPaginated :many
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings
-ORDER BY start_time
-LIMIT $1 OFFSET $2
-`
-
-type GetScreeningsPaginatedParams struct {
-	Limit  int32
-	Offset int32
-}
-
-func (q *Queries) GetScreeningsPaginated(ctx context.Context, arg GetScreeningsPaginatedParams) ([]Screening, error) {
-	rows, err := q.db.QueryContext(ctx, getScreeningsPaginated, arg.Limit, arg.Offset)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Screening
-	for rows.Next() {
-		var i Screening
-		if err := rows.Scan(
-			&i.ID,
-			&i.MovieID,
-			&i.RoomID,
-			&i.StartTime,
-			&i.EndTime,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getUpcomingScreeningsByDateRange = `-- name: GetUpcomingScreeningsByDateRange :many
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings
-WHERE start_time >= NOW() AND start_time >= $1 AND start_time <= $2
-ORDER BY start_time
-`
-
-type GetUpcomingScreeningsByDateRangeParams struct {
-	StartTime   time.Time
-	StartTime_2 time.Time
-}
-
-func (q *Queries) GetUpcomingScreeningsByDateRange(ctx context.Context, arg GetUpcomingScreeningsByDateRangeParams) ([]Screening, error) {
-	rows, err := q.db.QueryContext(ctx, getUpcomingScreeningsByDateRange, arg.StartTime, arg.StartTime_2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Screening
-	for rows.Next() {
-		var i Screening
-		if err := rows.Scan(
-			&i.ID,
-			&i.MovieID,
-			&i.RoomID,
-			&i.StartTime,
-			&i.EndTime,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getUpcomingScreeningsByMovieID = `-- name: GetUpcomingScreeningsByMovieID :many
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings
-WHERE movie_id = $1 AND start_time >= NOW()
-ORDER BY start_time
-`
-
-func (q *Queries) GetUpcomingScreeningsByMovieID(ctx context.Context, movieID uuid.UUID) ([]Screening, error) {
-	rows, err := q.db.QueryContext(ctx, getUpcomingScreeningsByMovieID, movieID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Screening
-	for rows.Next() {
-		var i Screening
-		if err := rows.Scan(
-			&i.ID,
-			&i.MovieID,
-			&i.RoomID,
-			&i.StartTime,
-			&i.EndTime,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getUpcomingScreeningsByMovieIDAndDateRange = `-- name: GetUpcomingScreeningsByMovieIDAndDateRange :many
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings
-WHERE movie_id = $1 AND start_time >= NOW() AND start_time >= $2 AND start_time <= $3
-ORDER BY start_time
-`
-
-type GetUpcomingScreeningsByMovieIDAndDateRangeParams struct {
-	MovieID     uuid.UUID
-	StartTime   time.Time
-	StartTime_2 time.Time
-}
-
-func (q *Queries) GetUpcomingScreeningsByMovieIDAndDateRange(ctx context.Context, arg GetUpcomingScreeningsByMovieIDAndDateRangeParams) ([]Screening, error) {
-	rows, err := q.db.QueryContext(ctx, getUpcomingScreeningsByMovieIDAndDateRange, arg.MovieID, arg.StartTime, arg.StartTime_2)
+func (q *Queries) GetScreenings(ctx context.Context, arg GetScreeningsParams) ([]Screening, error) {
+	rows, err := q.db.QueryContext(ctx, getScreenings,
+		arg.MovieID,
+		arg.RoomID,
+		arg.From,
+		arg.To,
+		arg.Upcoming,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
