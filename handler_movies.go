@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -11,46 +12,37 @@ import (
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
 )
 
-type Movie struct {
-	ID              uuid.UUID  `json:"id"`
-	CreatedAt       time.Time  `json:"created_at"`
-	UpdatedAt       time.Time  `json:"updated_at"`
-	Title           string     `json:"title"`
-	Slug            string     `json:"slug"`
-	Description     *string    `json:"description,omitempty"`
-	RunetimeMinutes *int32     `json:"runetime_minutes,omitempty"`
-	ReleaseDate     *time.Time `json:"release_date,omitempty"`
-	Genres          []Genre    `json:"genres,omitempty"`
-	PosterUrl       *string    `json:"poster_url,omitempty"`
+type MovieSummary struct {
+	ID        uuid.UUID `json:"id"`
+	Title     string    `json:"title"`
+	Slug      string    `json:"slug"`
+	PosterUrl *string   `json:"poster_url"`
 }
 
-type movieGenreRowData struct {
-	id             uuid.UUID
-	createdAt      time.Time
-	updatedAt      time.Time
-	title          string
-	slug           string
-	description    sql.NullString
-	runtimeMinutes sql.NullInt32
-	releaseDate    sql.NullTime
-	posterUrl      sql.NullString
-	genreID        uuid.NullUUID
-	genreCreatedAt sql.NullTime
-	genreUpdatedAt sql.NullTime
-	genreName      sql.NullString
+type MovieDetail struct {
+	ID             uuid.UUID  `json:"id"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	Title          string     `json:"title"`
+	Slug           string     `json:"slug"`
+	Description    *string    `json:"description"`
+	RuntimeMinutes *int32     `json:"runtime_minutes"`
+	ReleaseDate    *time.Time `json:"release_date"`
+	PosterUrl      *string    `json:"poster_url"`
+	Genres         []Genre    `json:"genres"`
 }
 
 func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Title           string     `json:"title"`
-		Slug            string     `json:"slug"`
-		Description     *string    `json:"description"`
-		RunetimeMinutes *int32     `json:"runetime_minutes"`
-		ReleaseDate     *time.Time `json:"release_date"`
-		GenreIDs        []string   `json:"genre_ids"`
+		Title          string     `json:"title"`
+		Slug           string     `json:"slug"`
+		Description    *string    `json:"description"`     // optional
+		RuntimeMinutes *int32     `json:"runtime_minutes"` // optional
+		ReleaseDate    *time.Time `json:"release_date"`    // optional
+		GenreIDs       []string   `json:"genre_ids"`
 	}
 	type response struct {
-		Movie
+		MovieDetail `json:"movie"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -70,6 +62,11 @@ func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if len(params.GenreIDs) == 0 {
+		respondWithError(w, http.StatusBadRequest, "At least one genre ID is required", nil)
+		return
+	}
+
 	genreUUIDs := make([]uuid.UUID, len(params.GenreIDs))
 	for i, genreIDStr := range params.GenreIDs {
 		genreID, err := uuid.Parse(genreIDStr)
@@ -80,59 +77,84 @@ func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request
 		genreUUIDs[i] = genreID
 	}
 
-	var genres []database.Genre
-	if len(genreUUIDs) > 0 {
-		genres, err = cfg.db.GetGenresByIDs(r.Context(), genreUUIDs)
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Error fetching genres", err)
-			return
-		}
+	existingGenres, err := cfg.db.GetGenresByIDs(r.Context(), genreUUIDs)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error fetching genres", err)
+		return
+	}
 
-		if len(genres) != len(genreUUIDs) {
-			respondWithError(w, http.StatusBadRequest, "One or more genre IDs not found", nil)
+	if len(existingGenres) != len(genreUUIDs) {
+		respondWithError(w, http.StatusBadRequest, "One or more genre IDs not found", nil)
+		return
+	}
+
+	desc := sql.NullString{}
+	if params.Description != nil {
+		if strings.TrimSpace(*params.Description) == "" {
+			respondWithError(w, http.StatusBadRequest, "Description cannot be empty if provided", nil)
 			return
 		}
+		desc.String = *params.Description
+		desc.Valid = true
+	}
+
+	runtime := sql.NullInt32{}
+	if params.RuntimeMinutes != nil {
+		if *params.RuntimeMinutes < 0 {
+			respondWithError(w, http.StatusBadRequest, "Runtime minutes must be non-negative", nil)
+			return
+		}
+		runtime.Int32 = *params.RuntimeMinutes
+		runtime.Valid = true // explicit zero allowed
+	}
+
+	relDate := sql.NullTime{}
+	if params.ReleaseDate != nil {
+		if params.ReleaseDate.IsZero() {
+			respondWithError(w, http.StatusBadRequest, "Release date cannot be empty if provided", nil)
+			return
+		}
+		relDate.Time = *params.ReleaseDate
+		relDate.Valid = true
 	}
 
 	movie, err := cfg.db.CreateMovie(r.Context(), database.CreateMovieParams{
 		Title:          params.Title,
 		Slug:           params.Slug,
-		Description:    convertToNullString(params.Description),
-		RuntimeMinutes: convertToNullInt32(params.RunetimeMinutes),
-		ReleaseDate:    convertToNullTime(params.ReleaseDate),
+		Description:    desc,
+		RuntimeMinutes: runtime,
+		ReleaseDate:    relDate,
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating movie", err)
 		return
 	}
 
-	if len(genreUUIDs) > 0 {
-		err = cfg.db.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
-			MovieID: movie.ID,
-			Column2: genreUUIDs,
-		})
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Error assigning genres to movie", err)
-			return
-		}
+	err = cfg.db.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
+		MovieID:  movie.ID,
+		GenreIds: genreUUIDs,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error assigning genres to movie", err)
+		return
 	}
 
-	rows, err := cfg.db.GetMovieWithGenresByID(r.Context(), movie.ID)
+	movieDetail, err := cfg.db.GetMovieDetailByID(r.Context(), movie.ID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch created movie", err)
 		return
 	}
 
-	createdMovie := aggregateMovieWithGenres(mapSlice(rows, adaptGetMovieWithGenresByIDRow))
+	movieResponse := aggregateMovieDetail(movieDetail)
 
 	respondWithJSON(w, http.StatusCreated, response{
-		Movie: createdMovie,
+		MovieDetail: movieResponse,
 	})
 }
 
 func (cfg *apiConfig) handlerGetMovies(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Movie
+		MovieDetail `json:"movie"`
 	}
 
 	movieIDString := r.PathValue("movieID")
@@ -142,91 +164,152 @@ func (cfg *apiConfig) handlerGetMovies(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rows, err := cfg.db.GetMovieWithGenresByID(r.Context(), movieID)
+	movie, err := cfg.db.GetMovieDetailByID(r.Context(), movieID)
 	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Movie not found", err)
+			return
+		}
 		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch movie", err)
 		return
 	}
 
-	if len(rows) == 0 {
-		respondWithError(w, http.StatusNotFound, "Movie not found", nil)
-		return
-	}
-
-	movie := aggregateMovieWithGenres(mapSlice(rows, adaptGetMovieWithGenresByIDRow))
+	movieResponse := aggregateMovieDetail(movie)
 
 	respondWithJSON(w, http.StatusOK, response{
-		Movie: movie,
+		MovieDetail: movieResponse,
 	})
 }
 
 func (cfg *apiConfig) handlerRetrieveMovies(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Movies []Movie `json:"movies"`
+		Movies []MovieSummary `json:"movies"`
 	}
 
-	var genreID uuid.UUID
-	genreIDString := r.URL.Query().Get("genre_id")
-	if genreIDString != "" {
-		parsedID, err := uuid.Parse(genreIDString)
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid genre ID", err)
+	q := r.URL.Query()
+
+	limit, offset := 100, 0
+
+	if limitStr := q.Get("limit"); limitStr != "" {
+		parsed, err := strconv.Atoi(limitStr)
+		if err != nil || parsed < 1 {
+			respondWithError(w, http.StatusBadRequest, "Invalid limit", err)
 			return
 		}
-		genreID = parsedID
+		limit = parsed
 	}
 
-	if genreIDString != "" {
-		rows, err := cfg.db.GetMoviesWithGenresForGenreID(r.Context(), genreID)
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Couldn't fetch movies for genre", err)
+	if offsetStr := q.Get("offset"); offsetStr != "" {
+		parsed, err := strconv.Atoi(offsetStr)
+		if err != nil || parsed < 0 {
+			respondWithError(w, http.StatusBadRequest, "Invalid offset", err)
 			return
 		}
-
-		grouped := make(map[uuid.UUID][]database.GetMoviesWithGenresForGenreIDRow)
-		for _, row := range rows {
-			grouped[row.ID] = append(grouped[row.ID], row)
-		}
-
-		movies := make([]Movie, 0, len(grouped))
-		for _, grp := range grouped {
-			movies = append(movies, aggregateMovieWithGenres(mapSlice(grp, adaptGetMoviesWithGenresForGenreIDRow)))
-		}
-
-		respondWithJSON(w, http.StatusOK, response{Movies: movies})
-		return
+		offset = parsed
 	}
 
-	rows, err := cfg.db.GetAllMoviesWithGenres(r.Context())
+	genreID, err := parseNullUUID(q.Get("genre_id"))
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch movies", err)
+		respondWithError(w, http.StatusBadRequest, "Invalid genre_id", err)
+		return
+	}
+	releaseDateFrom, err := parseNullTime(q.Get("release_date_from"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid release_date_from", err)
+		return
+	}
+	releaseDateTo, err := parseNullTime(q.Get("release_date_to"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid release_date_to", err)
+		return
+	}
+	runtimeMin, err := parseNullInt32(q.Get("runtime_min"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid runtime_min", err)
+		return
+	}
+	runtimeMax, err := parseNullInt32(q.Get("runtime_max"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid runtime_max", err)
 		return
 	}
 
-	grouped := make(map[uuid.UUID][]database.GetAllMoviesWithGenresRow)
-	for _, row := range rows {
-		grouped[row.ID] = append(grouped[row.ID], row)
+	if runtimeMin.Valid && runtimeMax.Valid && runtimeMin.Int32 > runtimeMax.Int32 {
+		respondWithError(w, http.StatusBadRequest, "runtime_min cannot be greater than runtime_max", nil)
+		return
+	}
+	if releaseDateFrom.Valid && releaseDateTo.Valid && releaseDateFrom.Time.After(releaseDateTo.Time) {
+		respondWithError(w, http.StatusBadRequest, "release_date_from cannot be after release_date_to", nil)
+		return
 	}
 
-	movies := make([]Movie, 0, len(grouped))
-	for _, grp := range grouped {
-		movies = append(movies, aggregateMovieWithGenres(mapSlice(grp, adaptGetAllMoviesWithGenresRow)))
+	movies, err := cfg.db.GetMoviesSummary(r.Context(), database.GetMoviesSummaryParams{
+		GenreID:         genreID,
+		Title:           sql.NullString{String: q.Get("title"), Valid: strings.TrimSpace(q.Get("title")) != ""},
+		ReleaseDateFrom: releaseDateFrom,
+		ReleaseDateTo:   releaseDateTo,
+		RuntimeMin:      runtimeMin,
+		RuntimeMax:      runtimeMax,
+		Limit:           int32(limit),
+		Offset:          int32(offset),
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get movies", err)
+		return
 	}
 
-	respondWithJSON(w, http.StatusOK, response{Movies: movies})
+	responseMovies := make([]MovieSummary, len(movies))
+	for i, r := range movies {
+		responseMovies[i] = MovieSummary{
+			ID:        r.ID,
+			Title:     r.Title,
+			Slug:      r.Slug,
+			PosterUrl: nullStringToPtr(r.PosterUrl),
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, response{
+		Movies: responseMovies,
+	})
+}
+
+func (cfg *apiConfig) handlerRetrieveCurrentMovies(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		Movies []MovieSummary `json:"movies"`
+	}
+
+	movies, err := cfg.db.GetCurrentMoviesSummary(r.Context())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get current movies", err)
+		return
+	}
+
+	responseMovies := make([]MovieSummary, len(movies))
+	for i, r := range movies {
+		responseMovies[i] = MovieSummary{
+			ID:        r.ID,
+			Title:     r.Title,
+			Slug:      r.Slug,
+			PosterUrl: nullStringToPtr(r.PosterUrl),
+		}
+	}
+
+	respondWithJSON(w, http.StatusOK, response{
+		Movies: responseMovies,
+	})
 }
 
 func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Title           string     `json:"title"`
-		Slug            string     `json:"slug"`
-		Description     *string    `json:"description"`
-		RunetimeMinutes *int32     `json:"runetime_minutes"`
-		ReleaseDate     *time.Time `json:"release_date"`
-		GenreIDs        []string   `json:"genre_ids"`
+		Title          string     `json:"title"`
+		Slug           string     `json:"slug"`
+		Description    *string    `json:"description"`     // optional
+		RuntimeMinutes *int32     `json:"runtime_minutes"` // optional
+		ReleaseDate    *time.Time `json:"release_date"`    // optional
+		GenreIDs       []string   `json:"genre_ids"`
 	}
 	type response struct {
-		Movie
+		MovieDetail `json:"movie"`
 	}
 
 	movieIDString := r.PathValue("movieID")
@@ -253,6 +336,11 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if len(params.GenreIDs) == 0 {
+		respondWithError(w, http.StatusBadRequest, "At least one genre ID is required", nil)
+		return
+	}
+
 	genreUUIDs := make([]uuid.UUID, len(params.GenreIDs))
 	for i, genreIDStr := range params.GenreIDs {
 		genreID, err := uuid.Parse(genreIDStr)
@@ -263,70 +351,89 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		genreUUIDs[i] = genreID
 	}
 
-	currentMovie, err := cfg.db.GetMovieByID(r.Context(), movieID)
+	existingGenres, err := cfg.db.GetGenresByIDs(r.Context(), genreUUIDs)
 	if err != nil {
-		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusNotFound, "Movie not found", err)
-			return
-		}
-		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch current movie", err)
+		respondWithError(w, http.StatusInternalServerError, "Error fetching genres", err)
 		return
 	}
 
-	if len(genreUUIDs) > 0 {
-		genres, err := cfg.db.GetGenresByIDs(r.Context(), genreUUIDs)
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Error fetching genres", err)
-			return
-		}
+	if len(existingGenres) != len(genreUUIDs) {
+		respondWithError(w, http.StatusBadRequest, "One or more genre IDs not found", nil)
+		return
+	}
 
-		if len(genres) != len(genreUUIDs) {
-			respondWithError(w, http.StatusBadRequest, "One or more genre IDs not found", nil)
+	desc := sql.NullString{}
+	if params.Description != nil {
+		if strings.TrimSpace(*params.Description) == "" {
+			respondWithError(w, http.StatusBadRequest, "Description cannot be empty if provided", nil)
 			return
 		}
+		desc.String = *params.Description
+		desc.Valid = true
+	}
+
+	runtime := sql.NullInt32{}
+	if params.RuntimeMinutes != nil {
+		if *params.RuntimeMinutes < 0 {
+			respondWithError(w, http.StatusBadRequest, "Runtime minutes must be non-negative", nil)
+			return
+		}
+		runtime.Int32 = *params.RuntimeMinutes
+		runtime.Valid = true
+	}
+
+	relDate := sql.NullTime{}
+	if params.ReleaseDate != nil {
+		if params.ReleaseDate.IsZero() {
+			respondWithError(w, http.StatusBadRequest, "Release date cannot be empty if provided", nil)
+			return
+		}
+		relDate.Time = *params.ReleaseDate
+		relDate.Valid = true
 	}
 
 	_, err = cfg.db.UpdateMovie(r.Context(), database.UpdateMovieParams{
 		ID:             movieID,
 		Title:          params.Title,
 		Slug:           params.Slug,
-		Description:    convertToNullString(params.Description),
-		RuntimeMinutes: convertToNullInt32(params.RunetimeMinutes),
-		ReleaseDate:    convertToNullTime(params.ReleaseDate),
-		PosterUrl:      currentMovie.PosterUrl,
+		Description:    desc,
+		RuntimeMinutes: runtime,
+		ReleaseDate:    relDate,
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't update movie", err)
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Movie not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Error updating movie", err)
 		return
 	}
 
-	if len(genreUUIDs) > 0 {
-		err = cfg.db.DeleteMovieGenres(r.Context(), movieID)
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Error deleting old genres", err)
-			return
-		}
-
-		err = cfg.db.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
-			MovieID: movieID,
-			Column2: genreUUIDs,
-		})
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Error assigning genres to movie", err)
-			return
-		}
+	err = cfg.db.DeleteMovieGenres(r.Context(), movieID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error deleting old genres", err)
+		return
 	}
 
-	rows, err := cfg.db.GetMovieWithGenresByID(r.Context(), movieID)
+	err = cfg.db.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
+		MovieID:  movieID,
+		GenreIds: genreUUIDs,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error assigning genres to movie", err)
+		return
+	}
+
+	movieDetail, err := cfg.db.GetMovieDetailByID(r.Context(), movieID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch updated movie", err)
 		return
 	}
 
-	updatedMovie := aggregateMovieWithGenres(mapSlice(rows, adaptGetMovieWithGenresByIDRow))
+	movieResponse := aggregateMovieDetail(movieDetail)
 
 	respondWithJSON(w, http.StatusOK, response{
-		Movie: updatedMovie,
+		MovieDetail: movieResponse,
 	})
 }
 
@@ -341,7 +448,7 @@ func (cfg *apiConfig) handlerDeleteMovies(w http.ResponseWriter, r *http.Request
 	err = cfg.db.DeleteMovie(r.Context(), movieID)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusBadRequest, "Movie not found", err)
+			respondWithError(w, http.StatusNotFound, "Movie not found", err)
 			return
 		}
 		respondWithError(w, http.StatusInternalServerError, "Couldn't delete movie", err)
@@ -351,146 +458,45 @@ func (cfg *apiConfig) handlerDeleteMovies(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func aggregateMovieWithGenres(rows []movieGenreRowData) Movie {
-	if len(rows) == 0 {
-		return Movie{}
-	}
-
-	firstRow := rows[0]
-
-	genreMap := make(map[uuid.UUID]Genre)
-	for _, row := range rows {
-		if row.genreID.Valid {
-			genreMap[row.genreID.UUID] = Genre{
-				ID:        row.genreID.UUID,
-				CreatedAt: row.genreCreatedAt.Time,
-				UpdatedAt: row.genreUpdatedAt.Time,
-				Name:      row.genreName.String,
+func aggregateMovieDetail(r database.GetMovieDetailByIDRow) MovieDetail {
+	var dbGenres []database.Genre
+	if r.Genres != nil {
+		// sqlc returns aggregated JSON columns as interface{} which may be
+		// []byte or string depending on the driver; we need this type switch
+		// to unmarshal it correctly.
+		switch v := r.Genres.(type) {
+		case []byte:
+			_ = json.Unmarshal(v, &dbGenres)
+		case string:
+			_ = json.Unmarshal([]byte(v), &dbGenres)
+		default:
+			// fallback if sqlc already gave us a slice (unlikely)
+			if b, err := json.Marshal(v); err == nil {
+				_ = json.Unmarshal(b, &dbGenres)
 			}
 		}
 	}
 
-	genres := make([]Genre, 0, len(genreMap))
-	for _, g := range genreMap {
-		genres = append(genres, g)
+	genres := make([]Genre, len(dbGenres))
+	for i, g := range dbGenres {
+		genres[i] = Genre{
+			ID:        g.ID,
+			CreatedAt: g.CreatedAt,
+			UpdatedAt: g.UpdatedAt,
+			Name:      g.Name,
+		}
 	}
 
-	return Movie{
-		ID:              firstRow.id,
-		CreatedAt:       firstRow.createdAt,
-		UpdatedAt:       firstRow.updatedAt,
-		Title:           firstRow.title,
-		Slug:            firstRow.slug,
-		Description:     nullStringToPointer(firstRow.description),
-		RunetimeMinutes: nullInt32ToPointer(firstRow.runtimeMinutes),
-		ReleaseDate:     nullTimeToPointer(firstRow.releaseDate),
-		Genres:          genres,
-		PosterUrl:       nullStringToPointer(firstRow.posterUrl),
+	return MovieDetail{
+		ID:             r.ID,
+		CreatedAt:      r.CreatedAt,
+		UpdatedAt:      r.UpdatedAt,
+		Title:          r.Title,
+		Slug:           r.Slug,
+		Description:    nullStringToPtr(r.Description),
+		RuntimeMinutes: nullInt32ToPtr(r.RuntimeMinutes),
+		ReleaseDate:    nullTimeToPtr(r.ReleaseDate),
+		PosterUrl:      nullStringToPtr(r.PosterUrl),
+		Genres:         genres,
 	}
-}
-
-func adaptGetMovieWithGenresByIDRow(r database.GetMovieWithGenresByIDRow) movieGenreRowData {
-	return movieGenreRowData{
-		id:             r.ID,
-		createdAt:      r.CreatedAt,
-		updatedAt:      r.UpdatedAt,
-		title:          r.Title,
-		slug:           r.Slug,
-		description:    r.Description,
-		runtimeMinutes: r.RuntimeMinutes,
-		releaseDate:    r.ReleaseDate,
-		posterUrl:      r.PosterUrl,
-		genreID:        r.GenreID,
-		genreCreatedAt: r.GenreCreatedAt,
-		genreUpdatedAt: r.GenreUpdatedAt,
-		genreName:      r.GenreName,
-	}
-}
-
-func adaptGetAllMoviesWithGenresRow(r database.GetAllMoviesWithGenresRow) movieGenreRowData {
-	return movieGenreRowData{
-		id:             r.ID,
-		createdAt:      r.CreatedAt,
-		updatedAt:      r.UpdatedAt,
-		title:          r.Title,
-		slug:           r.Slug,
-		description:    r.Description,
-		runtimeMinutes: r.RuntimeMinutes,
-		releaseDate:    r.ReleaseDate,
-		posterUrl:      r.PosterUrl,
-		genreID:        r.GenreID,
-		genreCreatedAt: r.GenreCreatedAt,
-		genreUpdatedAt: r.GenreUpdatedAt,
-		genreName:      r.GenreName,
-	}
-}
-
-func adaptGetMoviesWithGenresForGenreIDRow(r database.GetMoviesWithGenresForGenreIDRow) movieGenreRowData {
-	return movieGenreRowData{
-		id:             r.ID,
-		createdAt:      r.CreatedAt,
-		updatedAt:      r.UpdatedAt,
-		title:          r.Title,
-		slug:           r.Slug,
-		description:    r.Description,
-		runtimeMinutes: r.RuntimeMinutes,
-		releaseDate:    r.ReleaseDate,
-		posterUrl:      r.PosterUrl,
-		genreID:        r.GenreID,
-		genreCreatedAt: r.GenreCreatedAt,
-		genreUpdatedAt: r.GenreUpdatedAt,
-		genreName:      r.GenreName,
-	}
-}
-
-func mapSlice[T, U any](slice []T, fn func(T) U) []U {
-	result := make([]U, len(slice))
-	for i, v := range slice {
-		result[i] = fn(v)
-	}
-	return result
-}
-
-// Helper functions to convert pointers to sql.Null types
-func convertToNullString(s *string) sql.NullString {
-	if s == nil {
-		return sql.NullString{Valid: false}
-	}
-	return sql.NullString{String: *s, Valid: true}
-}
-
-func convertToNullInt32(i *int32) sql.NullInt32 {
-	if i == nil {
-		return sql.NullInt32{Valid: false}
-	}
-	return sql.NullInt32{Int32: *i, Valid: true}
-}
-
-func convertToNullTime(t *time.Time) sql.NullTime {
-	if t == nil {
-		return sql.NullTime{Valid: false}
-	}
-	return sql.NullTime{Time: *t, Valid: true}
-}
-
-// Helper functions to convert sql.Null types to pointers
-func nullStringToPointer(ns sql.NullString) *string {
-	if ns.Valid {
-		return &ns.String
-	}
-	return nil
-}
-
-func nullInt32ToPointer(ni sql.NullInt32) *int32 {
-	if ni.Valid {
-		return &ni.Int32
-	}
-	return nil
-}
-
-func nullTimeToPointer(nt sql.NullTime) *time.Time {
-	if nt.Valid {
-		return &nt.Time
-	}
-	return nil
 }

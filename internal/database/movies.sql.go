@@ -16,17 +16,21 @@ import (
 
 const assignGenresToMovie = `-- name: AssignGenresToMovie :exec
 INSERT INTO movie_genre (movie_id, genre_id, created_at, updated_at)
-SELECT $1, unnest($2::uuid[]), NOW(), NOW()
-ON CONFLICT DO NOTHING
+VALUES (
+    $1,
+    unnest($2::uuid[]),
+    NOW(),
+    NOW()
+)
 `
 
 type AssignGenresToMovieParams struct {
-	MovieID uuid.UUID
-	Column2 []uuid.UUID
+	MovieID  uuid.UUID
+	GenreIds []uuid.UUID
 }
 
 func (q *Queries) AssignGenresToMovie(ctx context.Context, arg AssignGenresToMovieParams) error {
-	_, err := q.db.ExecContext(ctx, assignGenresToMovie, arg.MovieID, pq.Array(arg.Column2))
+	_, err := q.db.ExecContext(ctx, assignGenresToMovie, arg.MovieID, pq.Array(arg.GenreIds))
 	return err
 }
 
@@ -99,55 +103,37 @@ func (q *Queries) DeleteMovieGenres(ctx context.Context, movieID uuid.UUID) erro
 	return err
 }
 
-const getAllMoviesWithGenres = `-- name: GetAllMoviesWithGenres :many
-SELECT 
-    m.id, m.created_at, m.updated_at, m.title, m.slug, m.description, 
-    m.runtime_minutes, m.release_date, m.poster_url,
-    g.id AS genre_id, g.created_at AS genre_created_at, g.updated_at AS genre_updated_at, g.name AS genre_name
+const getCurrentMoviesSummary = `-- name: GetCurrentMoviesSummary :many
+SELECT
+    m.id, m.title, m.slug, m.poster_url
 FROM movies m
-LEFT JOIN movie_genre mg ON m.id = mg.movie_id
-LEFT JOIN genres g ON mg.genre_id = g.id
+JOIN screenings s ON s.movie_id = m.id
+WHERE s.start_time >= NOW()
+GROUP BY m.id
+ORDER BY m.title ASC
 `
 
-type GetAllMoviesWithGenresRow struct {
-	ID             uuid.UUID
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	Title          string
-	Slug           string
-	Description    sql.NullString
-	RuntimeMinutes sql.NullInt32
-	ReleaseDate    sql.NullTime
-	PosterUrl      sql.NullString
-	GenreID        uuid.NullUUID
-	GenreCreatedAt sql.NullTime
-	GenreUpdatedAt sql.NullTime
-	GenreName      sql.NullString
+type GetCurrentMoviesSummaryRow struct {
+	ID        uuid.UUID
+	Title     string
+	Slug      string
+	PosterUrl sql.NullString
 }
 
-func (q *Queries) GetAllMoviesWithGenres(ctx context.Context) ([]GetAllMoviesWithGenresRow, error) {
-	rows, err := q.db.QueryContext(ctx, getAllMoviesWithGenres)
+func (q *Queries) GetCurrentMoviesSummary(ctx context.Context) ([]GetCurrentMoviesSummaryRow, error) {
+	rows, err := q.db.QueryContext(ctx, getCurrentMoviesSummary)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetAllMoviesWithGenresRow
+	var items []GetCurrentMoviesSummaryRow
 	for rows.Next() {
-		var i GetAllMoviesWithGenresRow
+		var i GetCurrentMoviesSummaryRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 			&i.Title,
 			&i.Slug,
-			&i.Description,
-			&i.RuntimeMinutes,
-			&i.ReleaseDate,
 			&i.PosterUrl,
-			&i.GenreID,
-			&i.GenreCreatedAt,
-			&i.GenreUpdatedAt,
-			&i.GenreName,
 		); err != nil {
 			return nil, err
 		}
@@ -162,62 +148,28 @@ func (q *Queries) GetAllMoviesWithGenres(ctx context.Context) ([]GetAllMoviesWit
 	return items, nil
 }
 
-const getMovieByID = `-- name: GetMovieByID :one
-SELECT id, created_at, updated_at, title, slug, description, runtime_minutes, release_date, poster_url FROM movies
-WHERE id = $1
-`
-
-func (q *Queries) GetMovieByID(ctx context.Context, id uuid.UUID) (Movie, error) {
-	row := q.db.QueryRowContext(ctx, getMovieByID, id)
-	var i Movie
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Title,
-		&i.Slug,
-		&i.Description,
-		&i.RuntimeMinutes,
-		&i.ReleaseDate,
-		&i.PosterUrl,
-	)
-	return i, err
-}
-
-const getMovieBySlug = `-- name: GetMovieBySlug :one
-SELECT id, created_at, updated_at, title, slug, description, runtime_minutes, release_date, poster_url FROM movies
-WHERE slug = $1
-`
-
-func (q *Queries) GetMovieBySlug(ctx context.Context, slug string) (Movie, error) {
-	row := q.db.QueryRowContext(ctx, getMovieBySlug, slug)
-	var i Movie
-	err := row.Scan(
-		&i.ID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.Title,
-		&i.Slug,
-		&i.Description,
-		&i.RuntimeMinutes,
-		&i.ReleaseDate,
-		&i.PosterUrl,
-	)
-	return i, err
-}
-
-const getMovieWithGenresByID = `-- name: GetMovieWithGenresByID :many
-SELECT 
-    m.id, m.created_at, m.updated_at, m.title, m.slug, m.description, 
-    m.runtime_minutes, m.release_date, m.poster_url,
-    g.id AS genre_id, g.created_at AS genre_created_at, g.updated_at AS genre_updated_at, g.name AS genre_name
+const getMovieDetailByID = `-- name: GetMovieDetailByID :one
+SELECT
+    m.id, m.created_at, m.updated_at, m.title, m.slug, m.description, m.runtime_minutes, m.release_date, m.poster_url,
+    COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'id',           g.id,
+                'created_at',   g.created_at,
+                'updated_at',   g.updated_at,
+                'name',         g.name
+            )
+        ) FILTER (WHERE g.id IS NOT NULL),
+        '[]'
+    ) AS genres
 FROM movies m
 LEFT JOIN movie_genre mg ON m.id = mg.movie_id
-LEFT JOIN genres g ON mg.genre_id = g.id
+LEFT JOIN genres       g ON mg.genre_id = g.id
 WHERE m.id = $1
+GROUP BY m.id
 `
 
-type GetMovieWithGenresByIDRow struct {
+type GetMovieDetailByIDRow struct {
 	ID             uuid.UUID
 	CreatedAt      time.Time
 	UpdatedAt      time.Time
@@ -227,99 +179,85 @@ type GetMovieWithGenresByIDRow struct {
 	RuntimeMinutes sql.NullInt32
 	ReleaseDate    sql.NullTime
 	PosterUrl      sql.NullString
-	GenreID        uuid.NullUUID
-	GenreCreatedAt sql.NullTime
-	GenreUpdatedAt sql.NullTime
-	GenreName      sql.NullString
+	Genres         interface{}
 }
 
-func (q *Queries) GetMovieWithGenresByID(ctx context.Context, id uuid.UUID) ([]GetMovieWithGenresByIDRow, error) {
-	rows, err := q.db.QueryContext(ctx, getMovieWithGenresByID, id)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetMovieWithGenresByIDRow
-	for rows.Next() {
-		var i GetMovieWithGenresByIDRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.Title,
-			&i.Slug,
-			&i.Description,
-			&i.RuntimeMinutes,
-			&i.ReleaseDate,
-			&i.PosterUrl,
-			&i.GenreID,
-			&i.GenreCreatedAt,
-			&i.GenreUpdatedAt,
-			&i.GenreName,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GetMovieDetailByID(ctx context.Context, id uuid.UUID) (GetMovieDetailByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getMovieDetailByID, id)
+	var i GetMovieDetailByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Title,
+		&i.Slug,
+		&i.Description,
+		&i.RuntimeMinutes,
+		&i.ReleaseDate,
+		&i.PosterUrl,
+		&i.Genres,
+	)
+	return i, err
 }
 
-const getMoviesWithGenresForGenreID = `-- name: GetMoviesWithGenresForGenreID :many
-SELECT 
-    m.id, m.created_at, m.updated_at, m.title, m.slug, m.description, 
-    m.runtime_minutes, m.release_date, m.poster_url,
-    g.id AS genre_id, g.created_at AS genre_created_at, g.updated_at AS genre_updated_at, g.name AS genre_name
+const getMoviesSummary = `-- name: GetMoviesSummary :many
+SELECT
+    m.id, m.title, m.slug, m.poster_url
 FROM movies m
 LEFT JOIN movie_genre mg ON m.id = mg.movie_id
-LEFT JOIN genres g ON mg.genre_id = g.id
-WHERE g.id = $1
+WHERE ($1::uuid IS NULL OR mg.genre_id = $1)
+    AND ($2::text IS NULL OR m.title ILIKE '%' || $2 || '%')
+    AND ($3::date IS NULL OR m.release_date >= $3::date)
+    AND ($4::date IS NULL OR m.release_date <= $4::date)
+    AND ($5::int IS NULL OR m.runtime_minutes >= $5::int)
+    AND ($6::int IS NULL OR m.runtime_minutes <= $6::int)
+GROUP BY m.id
+ORDER BY m.title ASC
+LIMIT $8
+OFFSET $7
 `
 
-type GetMoviesWithGenresForGenreIDRow struct {
-	ID             uuid.UUID
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-	Title          string
-	Slug           string
-	Description    sql.NullString
-	RuntimeMinutes sql.NullInt32
-	ReleaseDate    sql.NullTime
-	PosterUrl      sql.NullString
-	GenreID        uuid.NullUUID
-	GenreCreatedAt sql.NullTime
-	GenreUpdatedAt sql.NullTime
-	GenreName      sql.NullString
+type GetMoviesSummaryParams struct {
+	GenreID         uuid.NullUUID
+	Title           sql.NullString
+	ReleaseDateFrom sql.NullTime
+	ReleaseDateTo   sql.NullTime
+	RuntimeMin      sql.NullInt32
+	RuntimeMax      sql.NullInt32
+	Offset          int32
+	Limit           int32
 }
 
-func (q *Queries) GetMoviesWithGenresForGenreID(ctx context.Context, id uuid.UUID) ([]GetMoviesWithGenresForGenreIDRow, error) {
-	rows, err := q.db.QueryContext(ctx, getMoviesWithGenresForGenreID, id)
+type GetMoviesSummaryRow struct {
+	ID        uuid.UUID
+	Title     string
+	Slug      string
+	PosterUrl sql.NullString
+}
+
+func (q *Queries) GetMoviesSummary(ctx context.Context, arg GetMoviesSummaryParams) ([]GetMoviesSummaryRow, error) {
+	rows, err := q.db.QueryContext(ctx, getMoviesSummary,
+		arg.GenreID,
+		arg.Title,
+		arg.ReleaseDateFrom,
+		arg.ReleaseDateTo,
+		arg.RuntimeMin,
+		arg.RuntimeMax,
+		arg.Offset,
+		arg.Limit,
+	)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []GetMoviesWithGenresForGenreIDRow
+	var items []GetMoviesSummaryRow
 	for rows.Next() {
-		var i GetMoviesWithGenresForGenreIDRow
+		var i GetMoviesSummaryRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 			&i.Title,
 			&i.Slug,
-			&i.Description,
-			&i.RuntimeMinutes,
-			&i.ReleaseDate,
 			&i.PosterUrl,
-			&i.GenreID,
-			&i.GenreCreatedAt,
-			&i.GenreUpdatedAt,
-			&i.GenreName,
 		); err != nil {
 			return nil, err
 		}
@@ -374,4 +312,20 @@ func (q *Queries) UpdateMovie(ctx context.Context, arg UpdateMovieParams) (Movie
 		&i.PosterUrl,
 	)
 	return i, err
+}
+
+const uploadMoviePoster = `-- name: UploadMoviePoster :exec
+UPDATE movies
+SET poster_url = $2, updated_at = NOW()
+WHERE id = $1
+`
+
+type UploadMoviePosterParams struct {
+	ID        uuid.UUID
+	PosterUrl sql.NullString
+}
+
+func (q *Queries) UploadMoviePoster(ctx context.Context, arg UploadMoviePosterParams) error {
+	_, err := q.db.ExecContext(ctx, uploadMoviePoster, arg.ID, arg.PosterUrl)
+	return err
 }

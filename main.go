@@ -88,6 +88,7 @@ func main() {
 
 	mux.HandleFunc("GET /api/movies/{movieID}", apiCfg.handlerGetMovies)
 	mux.HandleFunc("GET /api/movies", apiCfg.handlerRetrieveMovies)
+	mux.HandleFunc("GET /api/movies/current", apiCfg.handlerRetrieveCurrentMovies)
 
 	mux.HandleFunc("GET /api/rooms/{roomID}", apiCfg.handlerGetRooms)
 	mux.HandleFunc("GET /api/rooms", apiCfg.handlerRetrieveRooms)

@@ -375,15 +375,3 @@ func (cfg *apiConfig) handlerDeleteScreenings(w http.ResponseWriter, r *http.Req
 
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func parseNullTime(s string) (sql.NullTime, error) {
-	if s == "" {
-		return sql.NullTime{}, nil
-	}
-
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return sql.NullTime{}, err
-	}
-	return sql.NullTime{Time: t, Valid: true}, nil
-}

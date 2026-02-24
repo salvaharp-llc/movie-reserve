@@ -360,14 +360,3 @@ func (cfg *apiConfig) handlerDeleteReservations(w http.ResponseWriter, r *http.R
 
 	w.WriteHeader(http.StatusNoContent)
 }
-
-func parseNullUUID(s string) (uuid.NullUUID, error) {
-	if s == "" {
-		return uuid.NullUUID{}, nil
-	}
-	id, err := uuid.Parse(s)
-	if err != nil {
-		return uuid.NullUUID{}, err
-	}
-	return uuid.NullUUID{UUID: id, Valid: true}, nil
-}

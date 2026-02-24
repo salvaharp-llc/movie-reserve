@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"io"
 	"mime"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 
 func (cfg *apiConfig) handlerUploadPoster(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Movie
+		MovieDetail `json:"movie"`
 	}
 
 	movieIDString := r.PathValue("movieID")
@@ -62,56 +63,26 @@ func (cfg *apiConfig) handlerUploadPoster(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	movie, err := cfg.db.GetMovieByID(r.Context(), movieID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't find movie", err)
-		return
-	}
-
 	assetURL := cfg.getAssetURL(assetPath)
 
-	movie, err = cfg.db.UpdateMovie(r.Context(), database.UpdateMovieParams{
-		ID:             movieID,
-		Title:          movie.Title,
-		Slug:           movie.Slug,
-		Description:    movie.Description,
-		RuntimeMinutes: movie.RuntimeMinutes,
-		ReleaseDate:    movie.ReleaseDate,
-		PosterUrl:      convertToNullString(&assetURL),
+	err = cfg.db.UploadMoviePoster(r.Context(), database.UploadMoviePosterParams{
+		ID:        movieID,
+		PosterUrl: sql.NullString{String: assetURL, Valid: true},
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update movie", err)
 		return
 	}
 
-	dbGenres, err := cfg.db.GetGenresByMovieID(r.Context(), movieID)
+	movie, err := cfg.db.GetMovieDetailByID(r.Context(), movieID)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch movie genres", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch updated movie", err)
 		return
 	}
 
-	responseGenres := make([]Genre, len(dbGenres))
-	for i, dbGenre := range dbGenres {
-		responseGenres[i] = Genre{
-			ID:        dbGenre.ID,
-			CreatedAt: dbGenre.CreatedAt,
-			UpdatedAt: dbGenre.UpdatedAt,
-			Name:      dbGenre.Name,
-		}
-	}
+	responseMovie := aggregateMovieDetail(movie)
 
 	respondWithJSON(w, http.StatusOK, response{
-		Movie: Movie{
-			ID:              movie.ID,
-			CreatedAt:       movie.CreatedAt,
-			UpdatedAt:       movie.UpdatedAt,
-			Title:           movie.Title,
-			Slug:            movie.Slug,
-			Description:     nullStringToPointer(movie.Description),
-			RunetimeMinutes: nullInt32ToPointer(movie.RuntimeMinutes),
-			ReleaseDate:     nullTimeToPointer(movie.ReleaseDate),
-			Genres:          responseGenres,
-			PosterUrl:       nullStringToPointer(movie.PosterUrl),
-		},
+		MovieDetail: responseMovie,
 	})
 }
