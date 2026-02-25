@@ -459,31 +459,21 @@ func (cfg *apiConfig) handlerDeleteMovies(w http.ResponseWriter, r *http.Request
 }
 
 func aggregateMovieDetail(r database.GetMovieDetailByIDRow) MovieDetail {
-	var dbGenres []database.Genre
+	var genres []Genre
 	if r.Genres != nil {
 		// sqlc returns aggregated JSON columns as interface{} which may be
 		// []byte or string depending on the driver; we need this type switch
 		// to unmarshal it correctly.
 		switch v := r.Genres.(type) {
 		case []byte:
-			_ = json.Unmarshal(v, &dbGenres)
+			_ = json.Unmarshal(v, &genres)
 		case string:
-			_ = json.Unmarshal([]byte(v), &dbGenres)
+			_ = json.Unmarshal([]byte(v), &genres)
 		default:
 			// fallback if sqlc already gave us a slice (unlikely)
 			if b, err := json.Marshal(v); err == nil {
-				_ = json.Unmarshal(b, &dbGenres)
+				_ = json.Unmarshal(b, &genres)
 			}
-		}
-	}
-
-	genres := make([]Genre, len(dbGenres))
-	for i, g := range dbGenres {
-		genres[i] = Genre{
-			ID:        g.ID,
-			CreatedAt: g.CreatedAt,
-			UpdatedAt: g.UpdatedAt,
-			Name:      g.Name,
 		}
 	}
 
