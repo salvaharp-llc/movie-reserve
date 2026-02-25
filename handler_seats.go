@@ -12,13 +12,12 @@ import (
 )
 
 type Seat struct {
-	ID          uuid.UUID `json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	RoomID      uuid.UUID `json:"room_id"`
-	RowLabel    string    `json:"row_label"`
-	SeatNumber  int32     `json:"seat_number"`
-	IsAvailable bool      `json:"is_available,omitempty"`
+	ID         uuid.UUID `json:"id"`
+	CreatedAt  time.Time `json:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at"`
+	RoomID     uuid.UUID `json:"room_id"`
+	RowLabel   string    `json:"row_label"`
+	SeatNumber int32     `json:"seat_number"`
 }
 
 func (cfg *apiConfig) handlerCreateSeats(w http.ResponseWriter, r *http.Request) {
@@ -155,7 +154,10 @@ func (cfg *apiConfig) handlerRetrieveRoomSeats(w http.ResponseWriter, r *http.Re
 
 func (cfg *apiConfig) handlerRetrieveScreeningSeats(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Seats []Seat `json:"seats"`
+		Seats []struct {
+			Seat
+			IsAvailable bool `json:"is_available"`
+		} `json:"seats"`
 	}
 
 	screeningIDString := r.PathValue("screeningID")
@@ -176,15 +178,23 @@ func (cfg *apiConfig) handlerRetrieveScreeningSeats(w http.ResponseWriter, r *ht
 		return
 	}
 
-	responseSeats := make([]Seat, len(seats))
+	responseSeats := make([]struct {
+		Seat
+		IsAvailable bool `json:"is_available"`
+	}, len(seats))
 	for i, s := range seats {
-		responseSeats[i] = Seat{
-			ID:          s.ID,
-			CreatedAt:   s.CreatedAt,
-			UpdatedAt:   s.UpdatedAt,
-			RoomID:      s.RoomID,
-			RowLabel:    s.RowLabel,
-			SeatNumber:  s.SeatNumber,
+		responseSeats[i] = struct {
+			Seat
+			IsAvailable bool `json:"is_available"`
+		}{
+			Seat: Seat{
+				ID:         s.ID,
+				CreatedAt:  s.CreatedAt,
+				UpdatedAt:  s.UpdatedAt,
+				RoomID:     s.RoomID,
+				RowLabel:   s.RowLabel,
+				SeatNumber: s.SeatNumber,
+			},
 			IsAvailable: s.IsAvailable,
 		}
 	}
