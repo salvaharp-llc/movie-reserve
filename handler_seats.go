@@ -11,7 +11,13 @@ import (
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
 )
 
-type Seat struct {
+type SeatSummary struct {
+	ID         uuid.UUID `json:"id"`
+	RowLabel   string    `json:"row_label"`
+	SeatNumber int32     `json:"seat_number"`
+}
+
+type SeatDetail struct {
 	ID         uuid.UUID `json:"id"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
@@ -27,7 +33,7 @@ func (cfg *apiConfig) handlerCreateSeats(w http.ResponseWriter, r *http.Request)
 		SeatNumber int32  `json:"seat_number"`
 	}
 	type response struct {
-		Seat
+		SeatDetail `json:"seat"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -67,7 +73,7 @@ func (cfg *apiConfig) handlerCreateSeats(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondWithJSON(w, http.StatusCreated, response{
-		Seat: Seat{
+		SeatDetail{
 			ID:         seat.ID,
 			CreatedAt:  seat.CreatedAt,
 			UpdatedAt:  seat.UpdatedAt,
@@ -80,7 +86,7 @@ func (cfg *apiConfig) handlerCreateSeats(w http.ResponseWriter, r *http.Request)
 
 func (cfg *apiConfig) handlerGetSeats(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Seat
+		SeatDetail `json:"seat"`
 	}
 
 	seatIDString := r.PathValue("seatID")
@@ -101,7 +107,7 @@ func (cfg *apiConfig) handlerGetSeats(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, response{
-		Seat: Seat{
+		SeatDetail{
 			ID:         seat.ID,
 			CreatedAt:  seat.CreatedAt,
 			UpdatedAt:  seat.UpdatedAt,
@@ -112,50 +118,10 @@ func (cfg *apiConfig) handlerGetSeats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (cfg *apiConfig) handlerRetrieveRoomSeats(w http.ResponseWriter, r *http.Request) {
-	type response struct {
-		Seats []Seat `json:"seats"`
-	}
-
-	roomIDString := r.PathValue("roomID")
-	roomID, err := uuid.Parse(roomIDString)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid room ID", err)
-		return
-	}
-
-	seats, err := cfg.db.GetSeatsByRoomID(r.Context(), roomID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't get seats", err)
-		return
-	}
-
-	if len(seats) == 0 {
-		respondWithError(w, http.StatusNotFound, "Seats not found", nil)
-		return
-	}
-
-	responseSeats := make([]Seat, len(seats))
-	for i, s := range seats {
-		responseSeats[i] = Seat{
-			ID:         s.ID,
-			CreatedAt:  s.CreatedAt,
-			UpdatedAt:  s.UpdatedAt,
-			RoomID:     s.RoomID,
-			RowLabel:   s.RowLabel,
-			SeatNumber: s.SeatNumber,
-		}
-	}
-
-	respondWithJSON(w, http.StatusOK, response{
-		Seats: responseSeats,
-	})
-}
-
 func (cfg *apiConfig) handlerRetrieveScreeningSeats(w http.ResponseWriter, r *http.Request) {
 	type response struct {
 		Seats []struct {
-			Seat
+			SeatSummary
 			IsAvailable bool `json:"is_available"`
 		} `json:"seats"`
 	}
@@ -179,19 +145,16 @@ func (cfg *apiConfig) handlerRetrieveScreeningSeats(w http.ResponseWriter, r *ht
 	}
 
 	responseSeats := make([]struct {
-		Seat
+		SeatSummary
 		IsAvailable bool `json:"is_available"`
 	}, len(seats))
 	for i, s := range seats {
 		responseSeats[i] = struct {
-			Seat
+			SeatSummary
 			IsAvailable bool `json:"is_available"`
 		}{
-			Seat: Seat{
+			SeatSummary: SeatSummary{
 				ID:         s.ID,
-				CreatedAt:  s.CreatedAt,
-				UpdatedAt:  s.UpdatedAt,
-				RoomID:     s.RoomID,
 				RowLabel:   s.RowLabel,
 				SeatNumber: s.SeatNumber,
 			},
@@ -211,7 +174,7 @@ func (cfg *apiConfig) handlerUpdateSeats(w http.ResponseWriter, r *http.Request)
 		SeatNumber int32  `json:"seat_number"`
 	}
 	type response struct {
-		Seat
+		SeatDetail `json:"seat"`
 	}
 
 	seatIDString := r.PathValue("seatID")
@@ -259,7 +222,7 @@ func (cfg *apiConfig) handlerUpdateSeats(w http.ResponseWriter, r *http.Request)
 	}
 
 	respondWithJSON(w, http.StatusOK, response{
-		Seat: Seat{
+		SeatDetail{
 			ID:         seat.ID,
 			CreatedAt:  seat.CreatedAt,
 			UpdatedAt:  seat.UpdatedAt,

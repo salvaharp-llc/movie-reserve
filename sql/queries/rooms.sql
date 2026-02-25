@@ -18,10 +18,30 @@ RETURNING *;
 DELETE FROM rooms
 WHERE id = $1;
 
--- name: GetRoomByID :one
-SELECT * FROM rooms
-WHERE id = $1;
+-- name: GetRoomDetailByID :one
+SELECT
+    r.*,
+    COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'id',           s.id,
+                'room_id',      s.room_id,
+                'row_label',    s.row_label,
+                'seat_number',  s.seat_number,
+                'created_at',   s.created_at,
+                'updated_at',   s.updated_at
+            )
+        ) FILTER (WHERE s.id IS NOT NULL),
+        '[]'
+    ) AS seats
+FROM rooms r
+LEFT JOIN seats s ON r.id = s.room_id
+WHERE r.id = $1
+GROUP BY r.id;
 
--- name: GetRooms :many
-SELECT * FROM rooms
-ORDER BY name;
+-- name: GetRoomsSummary :many
+SELECT 
+    r.id,
+    r.name
+FROM rooms r
+ORDER BY r.name;

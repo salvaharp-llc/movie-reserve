@@ -11,11 +11,17 @@ import (
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
 )
 
-type Room struct {
-	ID        uuid.UUID `json:"id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	Name      string    `json:"name"`
+type RoomSummary struct {
+	ID   uuid.UUID `json:"id"`
+	Name string    `json:"name"`
+}
+
+type RoomDetail struct {
+	ID        uuid.UUID     `json:"id"`
+	Name      string        `json:"name"`
+	CreatedAt time.Time     `json:"created_at"`
+	UpdatedAt time.Time     `json:"updated_at"`
+	Seats     []SeatSummary `json:"seats"`
 }
 
 func (cfg *apiConfig) handlerCreateRooms(w http.ResponseWriter, r *http.Request) {
@@ -23,7 +29,7 @@ func (cfg *apiConfig) handlerCreateRooms(w http.ResponseWriter, r *http.Request)
 		Name string `json:"name"`
 	}
 	type response struct {
-		Room
+		RoomDetail `json:"room"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -45,29 +51,7 @@ func (cfg *apiConfig) handlerCreateRooms(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	respondWithJSON(w, http.StatusCreated, response{
-		Room: Room{
-			ID:        room.ID,
-			CreatedAt: room.CreatedAt,
-			UpdatedAt: room.UpdatedAt,
-			Name:      room.Name,
-		},
-	})
-}
-
-func (cfg *apiConfig) handlerGetRooms(w http.ResponseWriter, r *http.Request) {
-	type response struct {
-		Room
-	}
-
-	roomIDString := r.PathValue("roomID")
-	roomID, err := uuid.Parse(roomIDString)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
-		return
-	}
-
-	room, err := cfg.db.GetRoomByID(r.Context(), roomID)
+	roomDetail, err := cfg.db.GetRoomDetailByID(r.Context(), room.ID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			respondWithError(w, http.StatusNotFound, "Room not found", err)
@@ -77,22 +61,48 @@ func (cfg *apiConfig) handlerGetRooms(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	responseRoom := aggregateRoomDetail(roomDetail)
+
 	respondWithJSON(w, http.StatusOK, response{
-		Room: Room{
-			ID:        room.ID,
-			CreatedAt: room.CreatedAt,
-			UpdatedAt: room.UpdatedAt,
-			Name:      room.Name,
-		},
+		RoomDetail: responseRoom,
+	})
+}
+
+func (cfg *apiConfig) handlerGetRooms(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		RoomDetail `json:"room"`
+	}
+
+	roomIDString := r.PathValue("roomID")
+	roomID, err := uuid.Parse(roomIDString)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
+		return
+	}
+
+	room, err := cfg.db.GetRoomDetailByID(r.Context(), roomID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Room not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get room", err)
+		return
+	}
+
+	responseRoom := aggregateRoomDetail(room)
+
+	respondWithJSON(w, http.StatusOK, response{
+		RoomDetail: responseRoom,
 	})
 }
 
 func (cfg *apiConfig) handlerRetrieveRooms(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Rooms []Room `json:"rooms"`
+		Rooms []RoomSummary `json:"rooms"`
 	}
 
-	rooms, err := cfg.db.GetRooms(r.Context())
+	rooms, err := cfg.db.GetRoomsSummary(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get rooms", err)
 		return
@@ -103,13 +113,11 @@ func (cfg *apiConfig) handlerRetrieveRooms(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	responseRooms := make([]Room, len(rooms))
+	responseRooms := make([]RoomSummary, len(rooms))
 	for i, room := range rooms {
-		responseRooms[i] = Room{
-			ID:        room.ID,
-			CreatedAt: room.CreatedAt,
-			UpdatedAt: room.UpdatedAt,
-			Name:      room.Name,
+		responseRooms[i] = RoomSummary{
+			ID:   room.ID,
+			Name: room.Name,
 		}
 	}
 
@@ -123,7 +131,7 @@ func (cfg *apiConfig) handlerUpdateRooms(w http.ResponseWriter, r *http.Request)
 		Name string `json:"name"`
 	}
 	type response struct {
-		Room
+		RoomDetail `json:"room"`
 	}
 
 	roomIDString := r.PathValue("roomID")
@@ -146,7 +154,7 @@ func (cfg *apiConfig) handlerUpdateRooms(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	room, err := cfg.db.UpdateRoom(r.Context(), database.UpdateRoomParams{
+	_, err = cfg.db.UpdateRoom(r.Context(), database.UpdateRoomParams{
 		ID:   roomID,
 		Name: params.Name,
 	})
@@ -159,13 +167,20 @@ func (cfg *apiConfig) handlerUpdateRooms(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	room, err := cfg.db.GetRoomDetailByID(r.Context(), roomID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Room not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get room", err)
+		return
+	}
+
+	responseRoom := aggregateRoomDetail(room)
+
 	respondWithJSON(w, http.StatusOK, response{
-		Room: Room{
-			ID:        room.ID,
-			CreatedAt: room.CreatedAt,
-			UpdatedAt: room.UpdatedAt,
-			Name:      room.Name,
-		},
+		RoomDetail: responseRoom,
 	})
 }
 
@@ -188,4 +203,32 @@ func (cfg *apiConfig) handlerDeleteRooms(w http.ResponseWriter, r *http.Request)
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func aggregateRoomDetail(r database.GetRoomDetailByIDRow) RoomDetail {
+	var seats []SeatSummary
+	if r.Seats != nil {
+		// sqlc returns aggregated JSON columns as interface{} which may be
+		// []byte or string depending on the driver; we need this type switch
+		// to unmarshal it correctly.
+		switch v := r.Seats.(type) {
+		case []byte:
+			_ = json.Unmarshal(v, &seats)
+		case string:
+			_ = json.Unmarshal([]byte(v), &seats)
+		default:
+			// fallback if sqlc already gave us a slice (unlikely)
+			if b, err := json.Marshal(v); err == nil {
+				_ = json.Unmarshal(b, &seats)
+			}
+		}
+	}
+
+	return RoomDetail{
+		ID:        r.ID,
+		CreatedAt: r.CreatedAt,
+		UpdatedAt: r.UpdatedAt,
+		Name:      r.Name,
+		Seats:     seats,
+	}
 }

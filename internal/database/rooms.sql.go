@@ -7,6 +7,7 @@ package database
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -44,43 +45,72 @@ func (q *Queries) DeleteRoom(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const getRoomByID = `-- name: GetRoomByID :one
-SELECT id, name, created_at, updated_at FROM rooms
-WHERE id = $1
+const getRoomDetailByID = `-- name: GetRoomDetailByID :one
+SELECT
+    r.id, r.name, r.created_at, r.updated_at,
+    COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'id',           s.id,
+                'room_id',      s.room_id,
+                'row_label',    s.row_label,
+                'seat_number',  s.seat_number,
+                'created_at',   s.created_at,
+                'updated_at',   s.updated_at
+            )
+        ) FILTER (WHERE s.id IS NOT NULL),
+        '[]'
+    ) AS seats
+FROM rooms r
+LEFT JOIN seats s ON r.id = s.room_id
+WHERE r.id = $1
+GROUP BY r.id
 `
 
-func (q *Queries) GetRoomByID(ctx context.Context, id uuid.UUID) (Room, error) {
-	row := q.db.QueryRowContext(ctx, getRoomByID, id)
-	var i Room
+type GetRoomDetailByIDRow struct {
+	ID        uuid.UUID
+	Name      string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Seats     interface{}
+}
+
+func (q *Queries) GetRoomDetailByID(ctx context.Context, id uuid.UUID) (GetRoomDetailByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getRoomDetailByID, id)
+	var i GetRoomDetailByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.Name,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Seats,
 	)
 	return i, err
 }
 
-const getRooms = `-- name: GetRooms :many
-SELECT id, name, created_at, updated_at FROM rooms
-ORDER BY name
+const getRoomsSummary = `-- name: GetRoomsSummary :many
+SELECT 
+    r.id,
+    r.name
+FROM rooms r
+ORDER BY r.name
 `
 
-func (q *Queries) GetRooms(ctx context.Context) ([]Room, error) {
-	rows, err := q.db.QueryContext(ctx, getRooms)
+type GetRoomsSummaryRow struct {
+	ID   uuid.UUID
+	Name string
+}
+
+func (q *Queries) GetRoomsSummary(ctx context.Context) ([]GetRoomsSummaryRow, error) {
+	rows, err := q.db.QueryContext(ctx, getRoomsSummary)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Room
+	var items []GetRoomsSummaryRow
 	for rows.Next() {
-		var i Room
-		if err := rows.Scan(
-			&i.ID,
-			&i.Name,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
+		var i GetRoomsSummaryRow
+		if err := rows.Scan(&i.ID, &i.Name); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
