@@ -7,6 +7,7 @@ package database
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"github.com/google/uuid"
@@ -63,14 +64,45 @@ func (q *Queries) DeleteScreening(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const getScreeningByID = `-- name: GetScreeningByID :one
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings
-WHERE id = $1
+const getScreeningDetailByID = `-- name: GetScreeningDetailByID :one
+SELECT
+    sc.id, sc.movie_id, sc.room_id, sc.start_time, sc.end_time, sc.created_at, sc.updated_at,
+    COALESCE(
+        jsonb_agg(
+            jsonb_build_object(
+                'id',           s.id,
+                'room_id',      s.room_id,
+                'row_label',    s.row_label,
+                'seat_number',  s.seat_number,
+                'created_at',   s.created_at,
+                'updated_at',   s.updated_at,
+                'available',    (res.id IS NULL)
+            )
+        ) FILTER (WHERE s.id IS NOT NULL),
+        '[]'
+    ) AS seats
+FROM screenings sc
+LEFT JOIN rooms r ON sc.room_id = r.id
+LEFT JOIN seats s ON r.id = s.room_id
+LEFT JOIN reservations res ON s.id = res.seat_id AND res.screening_id = sc.id
+WHERE sc.id = $1
+GROUP BY sc.id
 `
 
-func (q *Queries) GetScreeningByID(ctx context.Context, id uuid.UUID) (Screening, error) {
-	row := q.db.QueryRowContext(ctx, getScreeningByID, id)
-	var i Screening
+type GetScreeningDetailByIDRow struct {
+	ID        uuid.UUID
+	MovieID   uuid.UUID
+	RoomID    uuid.UUID
+	StartTime time.Time
+	EndTime   time.Time
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Seats     interface{}
+}
+
+func (q *Queries) GetScreeningDetailByID(ctx context.Context, id uuid.UUID) (GetScreeningDetailByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getScreeningDetailByID, id)
+	var i GetScreeningDetailByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.MovieID,
@@ -79,39 +111,45 @@ func (q *Queries) GetScreeningByID(ctx context.Context, id uuid.UUID) (Screening
 		&i.EndTime,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Seats,
 	)
 	return i, err
 }
 
-const getScreenings = `-- name: GetScreenings :many
-SELECT id, movie_id, room_id, start_time, end_time, created_at, updated_at FROM screenings s
+const getScreeningsSummary = `-- name: GetScreeningsSummary :many
+SELECT s.id, s.movie_id, s.room_id, s.start_time, s.end_time FROM screenings s
 WHERE ($1::uuid IS NULL OR s.movie_id = $1)
   AND ($2::uuid IS NULL OR s.room_id = $2)
-  AND ($3::timestampt IS NULL OR s.start_time >= $3)
-  AND ($4::timestampt IS NULL OR s.start_time <= $4)
-  AND ($5::bool IS FALSE OR s.start_time >= NOW())
+  AND ($3::timestamp IS NULL OR s.start_time >= $3)
+  AND ($4::timestamp IS NULL OR s.start_time <= $4)
 ORDER BY start_time
-LIMIT $7
-OFFSET $6
+LIMIT $6
+OFFSET $5
 `
 
-type GetScreeningsParams struct {
-	MovieID  uuid.NullUUID
-	RoomID   uuid.NullUUID
-	From     interface{}
-	To       interface{}
-	Upcoming bool
-	Offset   int32
-	Limit    int32
+type GetScreeningsSummaryParams struct {
+	MovieID uuid.NullUUID
+	RoomID  uuid.NullUUID
+	From    sql.NullTime
+	To      sql.NullTime
+	Offset  int32
+	Limit   int32
 }
 
-func (q *Queries) GetScreenings(ctx context.Context, arg GetScreeningsParams) ([]Screening, error) {
-	rows, err := q.db.QueryContext(ctx, getScreenings,
+type GetScreeningsSummaryRow struct {
+	ID        uuid.UUID
+	MovieID   uuid.UUID
+	RoomID    uuid.UUID
+	StartTime time.Time
+	EndTime   time.Time
+}
+
+func (q *Queries) GetScreeningsSummary(ctx context.Context, arg GetScreeningsSummaryParams) ([]GetScreeningsSummaryRow, error) {
+	rows, err := q.db.QueryContext(ctx, getScreeningsSummary,
 		arg.MovieID,
 		arg.RoomID,
 		arg.From,
 		arg.To,
-		arg.Upcoming,
 		arg.Offset,
 		arg.Limit,
 	)
@@ -119,17 +157,15 @@ func (q *Queries) GetScreenings(ctx context.Context, arg GetScreeningsParams) ([
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Screening
+	var items []GetScreeningsSummaryRow
 	for rows.Next() {
-		var i Screening
+		var i GetScreeningsSummaryRow
 		if err := rows.Scan(
 			&i.ID,
 			&i.MovieID,
 			&i.RoomID,
 			&i.StartTime,
 			&i.EndTime,
-			&i.CreatedAt,
-			&i.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}

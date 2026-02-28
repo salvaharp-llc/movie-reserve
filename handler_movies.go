@@ -213,32 +213,32 @@ func (cfg *apiConfig) handlerRetrieveMovies(w http.ResponseWriter, r *http.Reque
 		respondWithError(w, http.StatusBadRequest, "Invalid genre_id", err)
 		return
 	}
-	releaseDateFrom, err := parseNullTime(q.Get("release_date_from"))
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid release_date_from", err)
-		return
+	timeParams := map[string]sql.NullTime{}
+	for _, key := range []string{"release_date_from", "release_date_to"} {
+		parsed, err := parseNullTime(q.Get(key))
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid "+key+" date", err)
+			return
+		}
+		timeParams[key] = parsed
 	}
-	releaseDateTo, err := parseNullTime(q.Get("release_date_to"))
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid release_date_to", err)
-		return
-	}
-	runtimeMin, err := parseNullInt32(q.Get("runtime_min"))
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid runtime_min", err)
-		return
-	}
-	runtimeMax, err := parseNullInt32(q.Get("runtime_max"))
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid runtime_max", err)
-		return
+	intParams := map[string]sql.NullInt32{}
+	for _, key := range []string{"runtime_min", "runtime_max"} {
+		parsed, err := parseNullInt32(q.Get(key))
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, "Invalid "+key, err)
+			return
+		}
+		intParams[key] = parsed
 	}
 
-	if runtimeMin.Valid && runtimeMax.Valid && runtimeMin.Int32 > runtimeMax.Int32 {
+	if intParams["runtime_min"].Valid && intParams["runtime_max"].Valid &&
+		intParams["runtime_min"].Int32 > intParams["runtime_max"].Int32 {
 		respondWithError(w, http.StatusBadRequest, "runtime_min cannot be greater than runtime_max", nil)
 		return
 	}
-	if releaseDateFrom.Valid && releaseDateTo.Valid && releaseDateFrom.Time.After(releaseDateTo.Time) {
+	if timeParams["release_date_from"].Valid && timeParams["release_date_to"].Valid &&
+		timeParams["release_date_from"].Time.After(timeParams["release_date_to"].Time) {
 		respondWithError(w, http.StatusBadRequest, "release_date_from cannot be after release_date_to", nil)
 		return
 	}
@@ -246,10 +246,10 @@ func (cfg *apiConfig) handlerRetrieveMovies(w http.ResponseWriter, r *http.Reque
 	movies, err := cfg.db.GetMoviesSummary(r.Context(), database.GetMoviesSummaryParams{
 		GenreID:         genreID,
 		Title:           sql.NullString{String: q.Get("title"), Valid: strings.TrimSpace(q.Get("title")) != ""},
-		ReleaseDateFrom: releaseDateFrom,
-		ReleaseDateTo:   releaseDateTo,
-		RuntimeMin:      runtimeMin,
-		RuntimeMax:      runtimeMax,
+		ReleaseDateFrom: timeParams["release_date_from"],
+		ReleaseDateTo:   timeParams["release_date_to"],
+		RuntimeMin:      intParams["runtime_min"],
+		RuntimeMax:      intParams["runtime_max"],
 		Limit:           int32(limit),
 		Offset:          int32(offset),
 	})

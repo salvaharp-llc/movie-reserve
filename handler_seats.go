@@ -118,55 +118,6 @@ func (cfg *apiConfig) handlerGetSeats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (cfg *apiConfig) handlerRetrieveScreeningSeats(w http.ResponseWriter, r *http.Request) {
-	type response struct {
-		Seats []struct {
-			SeatSummary
-			IsAvailable bool `json:"is_available"`
-		} `json:"seats"`
-	}
-
-	screeningIDString := r.PathValue("screeningID")
-	screeningID, err := uuid.Parse(screeningIDString)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid screening ID", err)
-		return
-	}
-
-	seats, err := cfg.db.GetSeatsForScreening(r.Context(), screeningID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't get seats", err)
-		return
-	}
-
-	if len(seats) == 0 {
-		respondWithError(w, http.StatusNotFound, "Seats not found", nil)
-		return
-	}
-
-	responseSeats := make([]struct {
-		SeatSummary
-		IsAvailable bool `json:"is_available"`
-	}, len(seats))
-	for i, s := range seats {
-		responseSeats[i] = struct {
-			SeatSummary
-			IsAvailable bool `json:"is_available"`
-		}{
-			SeatSummary: SeatSummary{
-				ID:         s.ID,
-				RowLabel:   s.RowLabel,
-				SeatNumber: s.SeatNumber,
-			},
-			IsAvailable: s.IsAvailable,
-		}
-	}
-
-	respondWithJSON(w, http.StatusOK, response{
-		Seats: responseSeats,
-	})
-}
-
 func (cfg *apiConfig) handlerUpdateSeats(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		RoomID     string `json:"room_id"`

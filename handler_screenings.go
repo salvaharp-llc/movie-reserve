@@ -12,14 +12,28 @@ import (
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
 )
 
-type Screening struct {
+type ScreeningSeat struct {
+	SeatSummary
+	Available bool `json:"available"`
+}
+
+type ScreeningSummary struct {
 	ID        uuid.UUID `json:"id"`
 	MovieID   uuid.UUID `json:"movie_id"`
 	RoomID    uuid.UUID `json:"room_id"`
 	StartTime time.Time `json:"start_time"`
 	EndTime   time.Time `json:"end_time"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type ScreeningDetail struct {
+	ID        uuid.UUID       `json:"id"`
+	MovieID   uuid.UUID       `json:"movie_id"`
+	RoomID    uuid.UUID       `json:"room_id"`
+	StartTime time.Time       `json:"start_time"`
+	EndTime   time.Time       `json:"end_time"`
+	CreatedAt time.Time       `json:"created_at"`
+	UpdatedAt time.Time       `json:"updated_at"`
+	Seats     []ScreeningSeat `json:"seats"`
 }
 
 func (cfg *apiConfig) handlerCreateScreenings(w http.ResponseWriter, r *http.Request) {
@@ -30,7 +44,7 @@ func (cfg *apiConfig) handlerCreateScreenings(w http.ResponseWriter, r *http.Req
 		EndTime       time.Time `json:"end_time"`
 	}
 	type response struct {
-		Screening
+		ScreeningDetail `json:"screening"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -72,32 +86,7 @@ func (cfg *apiConfig) handlerCreateScreenings(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	respondWithJSON(w, http.StatusCreated, response{
-		Screening: Screening{
-			ID:        screening.ID,
-			MovieID:   screening.MovieID,
-			RoomID:    screening.RoomID,
-			StartTime: screening.StartTime,
-			EndTime:   screening.EndTime,
-			CreatedAt: screening.CreatedAt,
-			UpdatedAt: screening.UpdatedAt,
-		},
-	})
-}
-
-func (cfg *apiConfig) handlerGetScreenings(w http.ResponseWriter, r *http.Request) {
-	type response struct {
-		Screening
-	}
-
-	screeningIDString := r.PathValue("screeningID")
-	screeningID, err := uuid.Parse(screeningIDString)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
-		return
-	}
-
-	screening, err := cfg.db.GetScreeningByID(r.Context(), screeningID)
+	screeningDetail, err := cfg.db.GetScreeningDetailByID(r.Context(), screening.ID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			respondWithError(w, http.StatusNotFound, "Screening not found", err)
@@ -107,112 +96,53 @@ func (cfg *apiConfig) handlerGetScreenings(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	responseScreening := aggregateScreeningDetail(screeningDetail)
+
 	respondWithJSON(w, http.StatusOK, response{
-		Screening: Screening{
-			ID:        screening.ID,
-			MovieID:   screening.MovieID,
-			RoomID:    screening.RoomID,
-			StartTime: screening.StartTime,
-			EndTime:   screening.EndTime,
-			CreatedAt: screening.CreatedAt,
-			UpdatedAt: screening.UpdatedAt,
-		},
+		ScreeningDetail: responseScreening,
+	})
+}
+
+func (cfg *apiConfig) handlerGetScreenings(w http.ResponseWriter, r *http.Request) {
+	type response struct {
+		ScreeningDetail `json:"screening"`
+	}
+
+	screeningIDString := r.PathValue("screeningID")
+	screeningID, err := uuid.Parse(screeningIDString)
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
+		return
+	}
+
+	screening, err := cfg.db.GetScreeningDetailByID(r.Context(), screeningID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Screening not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get screening", err)
+		return
+	}
+
+	responseScreening := aggregateScreeningDetail(screening)
+
+	respondWithJSON(w, http.StatusOK, response{
+		ScreeningDetail: responseScreening,
 	})
 }
 
 func (cfg *apiConfig) handlerRetrieveScreenings(w http.ResponseWriter, r *http.Request) {
-	type response struct {
-		Screenings []Screening `json:"screenings"`
-	}
-
-	q := r.URL.Query()
-
-	if q.Get("movie_id") == "" && (q.Get("from") == "" || q.Get("to") == "") {
-		respondWithError(w, http.StatusBadRequest, "Provide either 'movie_id' or both 'from' and 'to' query params", nil)
-		return
-	}
-
-	limit, offset := 100, 0
-
-	if limitStr := q.Get("limit"); limitStr != "" {
-		parsed, err := strconv.Atoi(limitStr)
-		if err != nil || parsed < 1 {
-			respondWithError(w, http.StatusBadRequest, "Invalid limit", err)
-			return
-		}
-		limit = parsed
-	}
-
-	if offsetStr := q.Get("offset"); offsetStr != "" {
-		parsed, err := strconv.Atoi(offsetStr)
-		if err != nil || parsed < 0 {
-			respondWithError(w, http.StatusBadRequest, "Invalid offset", err)
-			return
-		}
-		offset = parsed
-	}
-
-	uuidParams := map[string]uuid.NullUUID{}
-	for _, key := range []string{"movie_id"} {
-		parsed, err := parseNullUUID(q.Get(key))
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid "+key, err)
-			return
-		}
-		uuidParams[key] = parsed
-	}
-	timeParams := map[string]sql.NullTime{}
-	for _, key := range []string{"from", "to"} {
-		parsed, err := parseNullTime(q.Get(key))
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid "+key+" date", err)
-			return
-		}
-		timeParams[key] = parsed
-	}
-
-	if !timeParams["from"].Valid || timeParams["from"].Time.Before(time.Now()) {
-		timeParams["from"] = sql.NullTime{Time: time.Now(), Valid: true}
-	}
-
-	screenings, err := cfg.db.GetScreenings(r.Context(), database.GetScreeningsParams{
-		MovieID:  uuidParams["movie_id"],
-		From:     timeParams["from"],
-		To:       timeParams["to"],
-		Upcoming: true,
-		Limit:    int32(limit),
-		Offset:   int32(offset),
-	})
-
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't get screenings", err)
-		return
-	}
-
-	if len(screenings) == 0 {
-		respondWithError(w, http.StatusNotFound, "No upcoming screenings found", nil)
-		return
-	}
-
-	responseScreenings := make([]Screening, len(screenings))
-	for i, s := range screenings {
-		responseScreenings[i] = Screening{
-			ID:        s.ID,
-			MovieID:   s.MovieID,
-			RoomID:    s.RoomID,
-			StartTime: s.StartTime,
-			EndTime:   s.EndTime,
-			CreatedAt: s.CreatedAt,
-			UpdatedAt: s.UpdatedAt,
-		}
-	}
-
-	respondWithJSON(w, http.StatusOK, response{Screenings: responseScreenings})
+	cfg.retrieveScreenings(w, r, true)
 }
 
 func (cfg *apiConfig) handlerRetrieveScreeningsAdmin(w http.ResponseWriter, r *http.Request) {
+	cfg.retrieveScreenings(w, r, false)
+}
+
+func (cfg *apiConfig) retrieveScreenings(w http.ResponseWriter, r *http.Request, filter_upcoming bool) {
 	type response struct {
-		Screenings []Screening `json:"screenings"`
+		Screenings []ScreeningSummary `json:"screenings"`
 	}
 
 	q := r.URL.Query()
@@ -237,14 +167,10 @@ func (cfg *apiConfig) handlerRetrieveScreeningsAdmin(w http.ResponseWriter, r *h
 		offset = parsed
 	}
 
-	uuidParams := map[string]uuid.NullUUID{}
-	for _, key := range []string{"movie_id", "room_id"} {
-		parsed, err := parseNullUUID(q.Get(key))
-		if err != nil {
-			respondWithError(w, http.StatusBadRequest, "Invalid "+key, err)
-			return
-		}
-		uuidParams[key] = parsed
+	movieID, err := parseNullUUID(q.Get("movie_id"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, "Invalid movie_id", err)
+		return
 	}
 
 	timeParams := map[string]sql.NullTime{}
@@ -257,31 +183,31 @@ func (cfg *apiConfig) handlerRetrieveScreeningsAdmin(w http.ResponseWriter, r *h
 		timeParams[key] = parsed
 	}
 
-	screenings, err := cfg.db.GetScreenings(r.Context(), database.GetScreeningsParams{
-		MovieID:  uuidParams["movie_id"],
-		RoomID:   uuidParams["room_id"],
-		From:     timeParams["from"],
-		To:       timeParams["to"],
-		Upcoming: false,
-		Limit:    int32(limit),
-		Offset:   int32(offset),
-	})
+	if filter_upcoming && timeParams["from"].Valid && timeParams["from"].Time.Before(time.Now()) {
+		respondWithError(w, http.StatusBadRequest, "'from' date cannot be in the past", nil)
+		return
+	}
 
+	screenings, err := cfg.db.GetScreeningsSummary(r.Context(), database.GetScreeningsSummaryParams{
+		MovieID: movieID,
+		From:    timeParams["from"],
+		To:      timeParams["to"],
+		Limit:   int32(limit),
+		Offset:  int32(offset),
+	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get screenings", err)
 		return
 	}
 
-	responseScreenings := make([]Screening, len(screenings))
+	responseScreenings := make([]ScreeningSummary, len(screenings))
 	for i, s := range screenings {
-		responseScreenings[i] = Screening{
+		responseScreenings[i] = ScreeningSummary{
 			ID:        s.ID,
 			MovieID:   s.MovieID,
 			RoomID:    s.RoomID,
 			StartTime: s.StartTime,
 			EndTime:   s.EndTime,
-			CreatedAt: s.CreatedAt,
-			UpdatedAt: s.UpdatedAt,
 		}
 	}
 
@@ -296,7 +222,7 @@ func (cfg *apiConfig) handlerUpdateScreenings(w http.ResponseWriter, r *http.Req
 		EndTime       time.Time `json:"end_time"`
 	}
 	type response struct {
-		Screening
+		ScreeningDetail `json:"screening"`
 	}
 
 	screeningIDString := r.PathValue("screeningID")
@@ -342,16 +268,20 @@ func (cfg *apiConfig) handlerUpdateScreenings(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	screeningDetail, err := cfg.db.GetScreeningDetailByID(r.Context(), screening.ID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Screening not found", err)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Couldn't get screening", err)
+		return
+	}
+
+	responseScreening := aggregateScreeningDetail(screeningDetail)
+
 	respondWithJSON(w, http.StatusOK, response{
-		Screening: Screening{
-			ID:        screening.ID,
-			MovieID:   screening.MovieID,
-			RoomID:    screening.RoomID,
-			StartTime: screening.StartTime,
-			EndTime:   screening.EndTime,
-			CreatedAt: screening.CreatedAt,
-			UpdatedAt: screening.UpdatedAt,
-		},
+		ScreeningDetail: responseScreening,
 	})
 }
 
@@ -374,4 +304,35 @@ func (cfg *apiConfig) handlerDeleteScreenings(w http.ResponseWriter, r *http.Req
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func aggregateScreeningDetail(sc database.GetScreeningDetailByIDRow) ScreeningDetail {
+	var seats []ScreeningSeat
+	if sc.Seats != nil {
+		// sqlc returns aggregated JSON columns as interface{} which may be
+		// []byte or string depending on the driver; we need this type switch
+		// to unmarshal it correctly.
+		switch v := sc.Seats.(type) {
+		case []byte:
+			_ = json.Unmarshal(v, &seats)
+		case string:
+			_ = json.Unmarshal([]byte(v), &seats)
+		default:
+			// fallback if sqlc already gave us a slice (unlikely)
+			if b, err := json.Marshal(v); err == nil {
+				_ = json.Unmarshal(b, &seats)
+			}
+		}
+	}
+
+	return ScreeningDetail{
+		ID:        sc.ID,
+		MovieID:   sc.MovieID,
+		RoomID:    sc.RoomID,
+		StartTime: sc.StartTime,
+		EndTime:   sc.EndTime,
+		CreatedAt: sc.CreatedAt,
+		UpdatedAt: sc.UpdatedAt,
+		Seats:     seats,
+	}
 }

@@ -95,7 +95,6 @@ func main() {
 
 	mux.HandleFunc("GET /api/screenings/{screeningID}", apiCfg.handlerGetScreenings)
 	mux.HandleFunc("GET /api/screenings", apiCfg.handlerRetrieveScreenings) // Only upcoming screenings for public
-	mux.HandleFunc("GET /api/screenings/{screeningID}/seats", apiCfg.handlerRetrieveScreeningSeats)
 
 	mux.HandleFunc("GET /api/seats/{seatID}", apiCfg.handlerGetSeats)
 
