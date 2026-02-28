@@ -55,14 +55,25 @@ func (q *Queries) DeleteSeat(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const getSeatByID = `-- name: GetSeatByID :one
-SELECT id, room_id, row_label, seat_number, created_at, updated_at FROM seats
-WHERE id = $1
+const getSeatDetailByID = `-- name: GetSeatDetailByID :one
+SELECT s.id, s.room_id, s.row_label, s.seat_number, s.created_at, s.updated_at, r.name AS room_name FROM seats s
+JOIN rooms r ON s.room_id = r.id
+WHERE s.id = $1
 `
 
-func (q *Queries) GetSeatByID(ctx context.Context, id uuid.UUID) (Seat, error) {
-	row := q.db.QueryRowContext(ctx, getSeatByID, id)
-	var i Seat
+type GetSeatDetailByIDRow struct {
+	ID         uuid.UUID
+	RoomID     uuid.UUID
+	RowLabel   string
+	SeatNumber int32
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	RoomName   string
+}
+
+func (q *Queries) GetSeatDetailByID(ctx context.Context, id uuid.UUID) (GetSeatDetailByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getSeatDetailByID, id)
+	var i GetSeatDetailByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.RoomID,
@@ -70,94 +81,9 @@ func (q *Queries) GetSeatByID(ctx context.Context, id uuid.UUID) (Seat, error) {
 		&i.SeatNumber,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.RoomName,
 	)
 	return i, err
-}
-
-const getSeatsByRoomID = `-- name: GetSeatsByRoomID :many
-SELECT id, room_id, row_label, seat_number, created_at, updated_at FROM seats
-WHERE room_id = $1
-ORDER BY row_label, seat_number
-`
-
-func (q *Queries) GetSeatsByRoomID(ctx context.Context, roomID uuid.UUID) ([]Seat, error) {
-	rows, err := q.db.QueryContext(ctx, getSeatsByRoomID, roomID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Seat
-	for rows.Next() {
-		var i Seat
-		if err := rows.Scan(
-			&i.ID,
-			&i.RoomID,
-			&i.RowLabel,
-			&i.SeatNumber,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getSeatsForScreening = `-- name: GetSeatsForScreening :many
-SELECT s.id, s.room_id, s.row_label, s.seat_number, s.created_at, s.updated_at, (CASE WHEN r.id IS NOT NULL THEN false ELSE true END) AS is_available
-FROM seats s
-JOIN screenings sc ON sc.room_id = s.room_id
-LEFT JOIN reservations r ON r.seat_id = s.id AND r.screening_id = $1
-WHERE sc.id = $1
-ORDER BY s.row_label, s.seat_number
-`
-
-type GetSeatsForScreeningRow struct {
-	ID          uuid.UUID
-	RoomID      uuid.UUID
-	RowLabel    string
-	SeatNumber  int32
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
-	IsAvailable bool
-}
-
-func (q *Queries) GetSeatsForScreening(ctx context.Context, screeningID uuid.UUID) ([]GetSeatsForScreeningRow, error) {
-	rows, err := q.db.QueryContext(ctx, getSeatsForScreening, screeningID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetSeatsForScreeningRow
-	for rows.Next() {
-		var i GetSeatsForScreeningRow
-		if err := rows.Scan(
-			&i.ID,
-			&i.RoomID,
-			&i.RowLabel,
-			&i.SeatNumber,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-			&i.IsAvailable,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const updateSeat = `-- name: UpdateSeat :one

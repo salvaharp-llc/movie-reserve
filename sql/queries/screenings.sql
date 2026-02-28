@@ -22,35 +22,56 @@ DELETE FROM screenings
 WHERE id = $1;
 
 -- name: GetScreeningDetailByID :one
-SELECT
-    sc.*,
-    COALESCE(
+SELECT 
+    sc.id,
+    sc.start_time,
+    sc.end_time,
+    sc.created_at,
+    sc.updated_at,
+    sc.movie_id,
+    m.title         AS movie_title,
+    m.slug          AS movie_slug,
+    m.poster_url    AS movie_poster_url,
+    sc.room_id,
+    r.name          AS room_name,
+    COALESCE(seats_agg.seats, '[]') AS seats
+FROM screenings sc
+JOIN rooms r ON sc.room_id = r.id
+JOIN movies m ON sc.movie_id = m.id
+LEFT JOIN (
+    SELECT
+        s.room_id,
         jsonb_agg(
             jsonb_build_object(
-                'id',           s.id,
-                'room_id',      s.room_id,
-                'row_label',    s.row_label,
-                'seat_number',  s.seat_number,
-                'created_at',   s.created_at,
-                'updated_at',   s.updated_at,
-                'available',    (res.id IS NULL)
+                'id',          s.id,
+                'row_label',   s.row_label,
+                'seat_number', s.seat_number,
+                'available',   (res.id IS NULL)
             )
-        ) FILTER (WHERE s.id IS NOT NULL),
-        '[]'
-    ) AS seats
-FROM screenings sc
-LEFT JOIN rooms r ON sc.room_id = r.id
-LEFT JOIN seats s ON r.id = s.room_id
-LEFT JOIN reservations res ON s.id = res.seat_id AND res.screening_id = sc.id
-WHERE sc.id = $1
-GROUP BY sc.id;
+        ) AS seats
+    FROM seats s
+    LEFT JOIN reservations res 
+        ON s.id = res.seat_id 
+        AND res.screening_id = $1
+    GROUP BY s.room_id
+) seats_agg ON r.id = seats_agg.room_id
+WHERE sc.id = $1;
 
 -- name: GetScreeningsSummary :many
-SELECT s.id, s.movie_id, s.room_id, s.start_time, s.end_time FROM screenings s
-WHERE (sqlc.narg('movie_id')::uuid IS NULL OR s.movie_id = sqlc.narg('movie_id'))
-  AND (sqlc.narg('room_id')::uuid IS NULL OR s.room_id = sqlc.narg('room_id'))
-  AND (sqlc.narg('from')::timestamp IS NULL OR s.start_time >= sqlc.narg('from'))
-  AND (sqlc.narg('to')::timestamp IS NULL OR s.start_time <= sqlc.narg('to'))
-ORDER BY start_time
+SELECT sc.id, sc.start_time, sc.end_time,
+sc.movie_id,
+m.title AS movie_title,
+m.slug AS movie_slug,
+m.poster_url AS movie_poster_url,
+sc.room_id,
+r.name AS room_name
+FROM screenings sc
+JOIN rooms r ON sc.room_id = r.id
+JOIN movies m ON sc.movie_id = m.id
+WHERE (sqlc.narg('movie_id')::uuid IS NULL OR sc.movie_id = sqlc.narg('movie_id'))
+  AND (sqlc.narg('room_id')::uuid IS NULL OR sc.room_id = sqlc.narg('room_id'))
+  AND (sqlc.narg('from')::timestamp IS NULL OR sc.start_time >= sqlc.narg('from'))
+  AND (sqlc.narg('to')::timestamp IS NULL OR sc.start_time <= sqlc.narg('to'))
+ORDER BY sc.start_time
 LIMIT sqlc.arg('limit')
 OFFSET sqlc.arg('offset');

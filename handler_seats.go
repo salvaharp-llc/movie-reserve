@@ -18,12 +18,12 @@ type SeatSummary struct {
 }
 
 type SeatDetail struct {
-	ID         uuid.UUID `json:"id"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
-	RoomID     uuid.UUID `json:"room_id"`
-	RowLabel   string    `json:"row_label"`
-	SeatNumber int32     `json:"seat_number"`
+	ID         uuid.UUID   `json:"id"`
+	CreatedAt  time.Time   `json:"created_at"`
+	UpdatedAt  time.Time   `json:"updated_at"`
+	Room       RoomSummary `json:"room"`
+	RowLabel   string      `json:"row_label"`
+	SeatNumber int32       `json:"seat_number"`
 }
 
 func (cfg *apiConfig) handlerCreateSeats(w http.ResponseWriter, r *http.Request) {
@@ -72,14 +72,23 @@ func (cfg *apiConfig) handlerCreateSeats(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	seatDetail, err := cfg.db.GetSeatDetailByID(r.Context(), seat.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error fetching created seat details", err)
+		return
+	}
+
 	respondWithJSON(w, http.StatusCreated, response{
 		SeatDetail{
-			ID:         seat.ID,
-			CreatedAt:  seat.CreatedAt,
-			UpdatedAt:  seat.UpdatedAt,
-			RoomID:     seat.RoomID,
-			RowLabel:   seat.RowLabel,
-			SeatNumber: seat.SeatNumber,
+			ID:        seatDetail.ID,
+			CreatedAt: seatDetail.CreatedAt,
+			UpdatedAt: seatDetail.UpdatedAt,
+			Room: RoomSummary{
+				ID:   seatDetail.RoomID,
+				Name: seatDetail.RoomName,
+			},
+			RowLabel:   seatDetail.RowLabel,
+			SeatNumber: seatDetail.SeatNumber,
 		},
 	})
 }
@@ -96,7 +105,7 @@ func (cfg *apiConfig) handlerGetSeats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	seat, err := cfg.db.GetSeatByID(r.Context(), seatID)
+	seat, err := cfg.db.GetSeatDetailByID(r.Context(), seatID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			respondWithError(w, http.StatusNotFound, "Seat not found", err)
@@ -108,10 +117,13 @@ func (cfg *apiConfig) handlerGetSeats(w http.ResponseWriter, r *http.Request) {
 
 	respondWithJSON(w, http.StatusOK, response{
 		SeatDetail{
-			ID:         seat.ID,
-			CreatedAt:  seat.CreatedAt,
-			UpdatedAt:  seat.UpdatedAt,
-			RoomID:     seat.RoomID,
+			ID:        seat.ID,
+			CreatedAt: seat.CreatedAt,
+			UpdatedAt: seat.UpdatedAt,
+			Room: RoomSummary{
+				ID:   seat.RoomID,
+				Name: seat.RoomName,
+			},
 			RowLabel:   seat.RowLabel,
 			SeatNumber: seat.SeatNumber,
 		},
@@ -172,14 +184,23 @@ func (cfg *apiConfig) handlerUpdateSeats(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	seatDetail, err := cfg.db.GetSeatDetailByID(r.Context(), seat.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error fetching updated seat details", err)
+		return
+	}
+
 	respondWithJSON(w, http.StatusOK, response{
 		SeatDetail{
-			ID:         seat.ID,
-			CreatedAt:  seat.CreatedAt,
-			UpdatedAt:  seat.UpdatedAt,
-			RoomID:     seat.RoomID,
-			RowLabel:   seat.RowLabel,
-			SeatNumber: seat.SeatNumber,
+			ID:        seatDetail.ID,
+			CreatedAt: seatDetail.CreatedAt,
+			UpdatedAt: seatDetail.UpdatedAt,
+			Room: RoomSummary{
+				ID:   seatDetail.RoomID,
+				Name: seatDetail.RoomName,
+			},
+			RowLabel:   seatDetail.RowLabel,
+			SeatNumber: seatDetail.SeatNumber,
 		},
 	})
 }

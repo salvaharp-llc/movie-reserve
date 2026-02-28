@@ -20,19 +20,7 @@ RETURNING *;
 DELETE FROM seats
 WHERE id = $1;
 
--- name: GetSeatByID :one
-SELECT * FROM seats
-WHERE id = $1;
-
--- name: GetSeatsByRoomID :many
-SELECT * FROM seats
-WHERE room_id = $1
-ORDER BY row_label, seat_number;
-
--- name: GetSeatsForScreening :many
-SELECT s.*, (CASE WHEN r.id IS NOT NULL THEN false ELSE true END) AS is_available
-FROM seats s
-JOIN screenings sc ON sc.room_id = s.room_id
-LEFT JOIN reservations r ON r.seat_id = s.id AND r.screening_id = $1
-WHERE sc.id = $1
-ORDER BY s.row_label, s.seat_number;
+-- name: GetSeatDetailByID :one
+SELECT s.*, r.name AS room_name FROM seats s
+JOIN rooms r ON s.room_id = r.id
+WHERE s.id = $1;

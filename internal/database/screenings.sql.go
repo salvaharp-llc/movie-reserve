@@ -8,6 +8,7 @@ package database
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"time"
 
 	"github.com/google/uuid"
@@ -65,64 +66,93 @@ func (q *Queries) DeleteScreening(ctx context.Context, id uuid.UUID) error {
 }
 
 const getScreeningDetailByID = `-- name: GetScreeningDetailByID :one
-SELECT
-    sc.id, sc.movie_id, sc.room_id, sc.start_time, sc.end_time, sc.created_at, sc.updated_at,
-    COALESCE(
+SELECT 
+    sc.id,
+    sc.start_time,
+    sc.end_time,
+    sc.created_at,
+    sc.updated_at,
+    sc.movie_id,
+    m.title         AS movie_title,
+    m.slug          AS movie_slug,
+    m.poster_url    AS movie_poster_url,
+    sc.room_id,
+    r.name          AS room_name,
+    COALESCE(seats_agg.seats, '[]') AS seats
+FROM screenings sc
+JOIN rooms r ON sc.room_id = r.id
+JOIN movies m ON sc.movie_id = m.id
+LEFT JOIN (
+    SELECT
+        s.room_id,
         jsonb_agg(
             jsonb_build_object(
-                'id',           s.id,
-                'room_id',      s.room_id,
-                'row_label',    s.row_label,
-                'seat_number',  s.seat_number,
-                'created_at',   s.created_at,
-                'updated_at',   s.updated_at,
-                'available',    (res.id IS NULL)
+                'id',          s.id,
+                'row_label',   s.row_label,
+                'seat_number', s.seat_number,
+                'available',   (res.id IS NULL)
             )
-        ) FILTER (WHERE s.id IS NOT NULL),
-        '[]'
-    ) AS seats
-FROM screenings sc
-LEFT JOIN rooms r ON sc.room_id = r.id
-LEFT JOIN seats s ON r.id = s.room_id
-LEFT JOIN reservations res ON s.id = res.seat_id AND res.screening_id = sc.id
+        ) AS seats
+    FROM seats s
+    LEFT JOIN reservations res 
+        ON s.id = res.seat_id 
+        AND res.screening_id = $1
+    GROUP BY s.room_id
+) seats_agg ON r.id = seats_agg.room_id
 WHERE sc.id = $1
-GROUP BY sc.id
 `
 
 type GetScreeningDetailByIDRow struct {
-	ID        uuid.UUID
-	MovieID   uuid.UUID
-	RoomID    uuid.UUID
-	StartTime time.Time
-	EndTime   time.Time
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	Seats     interface{}
+	ID             uuid.UUID
+	StartTime      time.Time
+	EndTime        time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	MovieID        uuid.UUID
+	MovieTitle     string
+	MovieSlug      string
+	MoviePosterUrl sql.NullString
+	RoomID         uuid.UUID
+	RoomName       string
+	Seats          json.RawMessage
 }
 
-func (q *Queries) GetScreeningDetailByID(ctx context.Context, id uuid.UUID) (GetScreeningDetailByIDRow, error) {
-	row := q.db.QueryRowContext(ctx, getScreeningDetailByID, id)
+func (q *Queries) GetScreeningDetailByID(ctx context.Context, screeningID uuid.UUID) (GetScreeningDetailByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getScreeningDetailByID, screeningID)
 	var i GetScreeningDetailByIDRow
 	err := row.Scan(
 		&i.ID,
-		&i.MovieID,
-		&i.RoomID,
 		&i.StartTime,
 		&i.EndTime,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.MovieID,
+		&i.MovieTitle,
+		&i.MovieSlug,
+		&i.MoviePosterUrl,
+		&i.RoomID,
+		&i.RoomName,
 		&i.Seats,
 	)
 	return i, err
 }
 
 const getScreeningsSummary = `-- name: GetScreeningsSummary :many
-SELECT s.id, s.movie_id, s.room_id, s.start_time, s.end_time FROM screenings s
-WHERE ($1::uuid IS NULL OR s.movie_id = $1)
-  AND ($2::uuid IS NULL OR s.room_id = $2)
-  AND ($3::timestamp IS NULL OR s.start_time >= $3)
-  AND ($4::timestamp IS NULL OR s.start_time <= $4)
-ORDER BY start_time
+SELECT sc.id, sc.start_time, sc.end_time,
+sc.movie_id,
+m.title AS movie_title,
+m.slug AS movie_slug,
+m.poster_url AS movie_poster_url,
+sc.room_id,
+r.name AS room_name
+FROM screenings sc
+JOIN rooms r ON sc.room_id = r.id
+JOIN movies m ON sc.movie_id = m.id
+WHERE ($1::uuid IS NULL OR sc.movie_id = $1)
+  AND ($2::uuid IS NULL OR sc.room_id = $2)
+  AND ($3::timestamp IS NULL OR sc.start_time >= $3)
+  AND ($4::timestamp IS NULL OR sc.start_time <= $4)
+ORDER BY sc.start_time
 LIMIT $6
 OFFSET $5
 `
@@ -137,11 +167,15 @@ type GetScreeningsSummaryParams struct {
 }
 
 type GetScreeningsSummaryRow struct {
-	ID        uuid.UUID
-	MovieID   uuid.UUID
-	RoomID    uuid.UUID
-	StartTime time.Time
-	EndTime   time.Time
+	ID             uuid.UUID
+	StartTime      time.Time
+	EndTime        time.Time
+	MovieID        uuid.UUID
+	MovieTitle     string
+	MovieSlug      string
+	MoviePosterUrl sql.NullString
+	RoomID         uuid.UUID
+	RoomName       string
 }
 
 func (q *Queries) GetScreeningsSummary(ctx context.Context, arg GetScreeningsSummaryParams) ([]GetScreeningsSummaryRow, error) {
@@ -162,10 +196,14 @@ func (q *Queries) GetScreeningsSummary(ctx context.Context, arg GetScreeningsSum
 		var i GetScreeningsSummaryRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.MovieID,
-			&i.RoomID,
 			&i.StartTime,
 			&i.EndTime,
+			&i.MovieID,
+			&i.MovieTitle,
+			&i.MovieSlug,
+			&i.MoviePosterUrl,
+			&i.RoomID,
+			&i.RoomName,
 		); err != nil {
 			return nil, err
 		}

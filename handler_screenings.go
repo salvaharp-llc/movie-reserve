@@ -18,17 +18,17 @@ type ScreeningSeat struct {
 }
 
 type ScreeningSummary struct {
-	ID        uuid.UUID `json:"id"`
-	MovieID   uuid.UUID `json:"movie_id"`
-	RoomID    uuid.UUID `json:"room_id"`
-	StartTime time.Time `json:"start_time"`
-	EndTime   time.Time `json:"end_time"`
+	ID        uuid.UUID    `json:"id"`
+	Movie     MovieSummary `json:"movie"`
+	Room      RoomSummary  `json:"room"`
+	StartTime time.Time    `json:"start_time"`
+	EndTime   time.Time    `json:"end_time"`
 }
 
 type ScreeningDetail struct {
 	ID        uuid.UUID       `json:"id"`
-	MovieID   uuid.UUID       `json:"movie_id"`
-	RoomID    uuid.UUID       `json:"room_id"`
+	Movie     MovieSummary    `json:"movie"`
+	Room      RoomSummary     `json:"room"`
 	StartTime time.Time       `json:"start_time"`
 	EndTime   time.Time       `json:"end_time"`
 	CreatedAt time.Time       `json:"created_at"`
@@ -203,9 +203,17 @@ func (cfg *apiConfig) retrieveScreenings(w http.ResponseWriter, r *http.Request,
 	responseScreenings := make([]ScreeningSummary, len(screenings))
 	for i, s := range screenings {
 		responseScreenings[i] = ScreeningSummary{
-			ID:        s.ID,
-			MovieID:   s.MovieID,
-			RoomID:    s.RoomID,
+			ID: s.ID,
+			Movie: MovieSummary{
+				ID:        s.MovieID,
+				Title:     s.MovieTitle,
+				Slug:      s.MovieSlug,
+				PosterUrl: nullStringToPtr(s.MoviePosterUrl),
+			},
+			Room: RoomSummary{
+				ID:   s.RoomID,
+				Name: s.RoomName,
+			},
 			StartTime: s.StartTime,
 			EndTime:   s.EndTime,
 		}
@@ -308,27 +316,20 @@ func (cfg *apiConfig) handlerDeleteScreenings(w http.ResponseWriter, r *http.Req
 
 func aggregateScreeningDetail(sc database.GetScreeningDetailByIDRow) ScreeningDetail {
 	var seats []ScreeningSeat
-	if sc.Seats != nil {
-		// sqlc returns aggregated JSON columns as interface{} which may be
-		// []byte or string depending on the driver; we need this type switch
-		// to unmarshal it correctly.
-		switch v := sc.Seats.(type) {
-		case []byte:
-			_ = json.Unmarshal(v, &seats)
-		case string:
-			_ = json.Unmarshal([]byte(v), &seats)
-		default:
-			// fallback if sqlc already gave us a slice (unlikely)
-			if b, err := json.Marshal(v); err == nil {
-				_ = json.Unmarshal(b, &seats)
-			}
-		}
-	}
+	_ = json.Unmarshal(sc.Seats, &seats)
 
 	return ScreeningDetail{
-		ID:        sc.ID,
-		MovieID:   sc.MovieID,
-		RoomID:    sc.RoomID,
+		ID: sc.ID,
+		Movie: MovieSummary{
+			ID:        sc.MovieID,
+			Title:     sc.MovieTitle,
+			Slug:      sc.MovieSlug,
+			PosterUrl: nullStringToPtr(sc.MoviePosterUrl),
+		},
+		Room: RoomSummary{
+			ID:   sc.RoomID,
+			Name: sc.RoomName,
+		},
 		StartTime: sc.StartTime,
 		EndTime:   sc.EndTime,
 		CreatedAt: sc.CreatedAt,
