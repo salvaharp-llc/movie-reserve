@@ -13,13 +13,20 @@ import (
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
 )
 
-type Reservation struct {
-	ID          uuid.UUID `json:"id"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
-	UserID      uuid.UUID `json:"user_id"`
-	ScreeningID uuid.UUID `json:"screening_id"`
-	SeatID      uuid.UUID `json:"seat_id"`
+type ReservationSummary struct {
+	ID        uuid.UUID        `json:"id"`
+	Screening ScreeningSummary `json:"screening"`
+	Seat      SeatSummary      `json:"seat"`
+}
+
+type ReservationDetail struct {
+	ID        uuid.UUID        `json:"id"`
+	CreatedAt time.Time        `json:"created_at"`
+	UpdatedAt time.Time        `json:"updated_at"`
+	User      UserSummary      `json:"user"`
+	Screening ScreeningSummary `json:"screening"`
+	Room      RoomSummary      `json:"room"`
+	Seat      SeatSummary      `json:"seat"`
 }
 
 func (cfg *apiConfig) handlerCreateReservations(w http.ResponseWriter, r *http.Request) {
@@ -28,7 +35,7 @@ func (cfg *apiConfig) handlerCreateReservations(w http.ResponseWriter, r *http.R
 		SeatID      string `json:"seat_id"`
 	}
 	type response struct {
-		Reservation
+		ReservationDetail `json:"reservation"`
 	}
 
 	decoder := json.NewDecoder(r.Body)
@@ -74,21 +81,22 @@ func (cfg *apiConfig) handlerCreateReservations(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	reservationDetails, err := cfg.db.GetReservationDetailByID(r.Context(), reservation.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error fetching reservation details", err)
+		return
+	}
+
+	responseReservation := aggregateReservationDetails(reservationDetails)
+
 	respondWithJSON(w, http.StatusCreated, response{
-		Reservation: Reservation{
-			ID:          reservation.ID,
-			CreatedAt:   reservation.CreatedAt,
-			UpdatedAt:   reservation.UpdatedAt,
-			UserID:      reservation.UserID,
-			ScreeningID: reservation.ScreeningID,
-			SeatID:      reservation.SeatID,
-		},
+		ReservationDetail: responseReservation,
 	})
 }
 
 func (cfg *apiConfig) handlerGetReservations(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Reservation
+		ReservationDetail `json:"reservation"`
 	}
 
 	userID, err := GetUserID(r.Context())
@@ -109,7 +117,7 @@ func (cfg *apiConfig) handlerGetReservations(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	reservation, err := cfg.db.GetReservationByID(r.Context(), reservationID)
+	reservation, err := cfg.db.GetReservationDetailByID(r.Context(), reservationID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			respondWithError(w, http.StatusNotFound, "Reservation not found", err)
@@ -124,21 +132,16 @@ func (cfg *apiConfig) handlerGetReservations(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	responseReservation := aggregateReservationDetails(reservation)
+
 	respondWithJSON(w, http.StatusOK, response{
-		Reservation: Reservation{
-			ID:          reservation.ID,
-			CreatedAt:   reservation.CreatedAt,
-			UpdatedAt:   reservation.UpdatedAt,
-			UserID:      reservation.UserID,
-			ScreeningID: reservation.ScreeningID,
-			SeatID:      reservation.SeatID,
-		},
+		ReservationDetail: responseReservation,
 	})
 }
 
 func (cfg *apiConfig) handlerRetrieveReservations(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Reservations []Reservation `json:"reservations"`
+		Reservations []ReservationSummary `json:"reservations"`
 	}
 
 	userID, err := GetUserID(r.Context())
@@ -147,23 +150,15 @@ func (cfg *apiConfig) handlerRetrieveReservations(w http.ResponseWriter, r *http
 		return
 	}
 
-	reservations, err := cfg.db.GetReservationsByUserID(r.Context(), userID)
+	reservations, err := cfg.db.GetReservationsSummary(r.Context(), database.GetReservationsSummaryParams{
+		UserID: uuid.NullUUID{UUID: userID, Valid: true},
+	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't get reservations", err)
 		return
 	}
 
-	responseReservations := make([]Reservation, len(reservations))
-	for i, r := range reservations {
-		responseReservations[i] = Reservation{
-			ID:          r.ID,
-			CreatedAt:   r.CreatedAt,
-			UpdatedAt:   r.UpdatedAt,
-			UserID:      r.UserID,
-			ScreeningID: r.ScreeningID,
-			SeatID:      r.SeatID,
-		}
-	}
+	responseReservations := aggregateReservationSummaries(reservations)
 
 	respondWithJSON(w, http.StatusOK, response{
 		Reservations: responseReservations,
@@ -172,7 +167,7 @@ func (cfg *apiConfig) handlerRetrieveReservations(w http.ResponseWriter, r *http
 
 func (cfg *apiConfig) handlerRetrieveReservationsAdmin(w http.ResponseWriter, r *http.Request) {
 	type response struct {
-		Reservations []Reservation `json:"reservations"`
+		Reservations []ReservationSummary `json:"reservations"`
 	}
 
 	q := r.URL.Query()
@@ -212,7 +207,7 @@ func (cfg *apiConfig) handlerRetrieveReservationsAdmin(w http.ResponseWriter, r 
 		uuidParams[key] = parsed
 	}
 
-	reservations, err := cfg.db.GetReservations(r.Context(), database.GetReservationsParams{
+	reservations, err := cfg.db.GetReservationsSummary(r.Context(), database.GetReservationsSummaryParams{
 		UserID:      uuidParams["user_id"],
 		ScreeningID: uuidParams["screening_id"],
 		MovieID:     uuidParams["movie_id"],
@@ -225,17 +220,7 @@ func (cfg *apiConfig) handlerRetrieveReservationsAdmin(w http.ResponseWriter, r 
 		return
 	}
 
-	responseReservations := make([]Reservation, len(reservations))
-	for i, res := range reservations {
-		responseReservations[i] = Reservation{
-			ID:          res.ID,
-			CreatedAt:   res.CreatedAt,
-			UpdatedAt:   res.UpdatedAt,
-			UserID:      res.UserID,
-			ScreeningID: res.ScreeningID,
-			SeatID:      res.SeatID,
-		}
-	}
+	responseReservations := aggregateReservationSummaries(reservations)
 
 	respondWithJSON(w, http.StatusOK, response{Reservations: responseReservations})
 }
@@ -247,7 +232,7 @@ func (cfg *apiConfig) handlerUpdateReservations(w http.ResponseWriter, r *http.R
 		SeatID      string `json:"seat_id"`
 	}
 	type response struct {
-		Reservation
+		ReservationDetail `json:"reservation"`
 	}
 
 	reservationIDString := r.PathValue("reservationID")
@@ -306,15 +291,15 @@ func (cfg *apiConfig) handlerUpdateReservations(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	reservationDetails, err := cfg.db.GetReservationDetailByID(r.Context(), reservation.ID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error fetching reservation details", err)
+		return
+	}
+
+	responseReservation := aggregateReservationDetails(reservationDetails)
 	respondWithJSON(w, http.StatusOK, response{
-		Reservation: Reservation{
-			ID:          reservation.ID,
-			CreatedAt:   reservation.CreatedAt,
-			UpdatedAt:   reservation.UpdatedAt,
-			UserID:      reservation.UserID,
-			ScreeningID: reservation.ScreeningID,
-			SeatID:      reservation.SeatID,
-		},
+		ReservationDetail: responseReservation,
 	})
 }
 
@@ -337,7 +322,7 @@ func (cfg *apiConfig) handlerDeleteReservations(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	reservation, err := cfg.db.GetReservationByID(r.Context(), reservationID)
+	reservation, err := cfg.db.GetReservationMetaByID(r.Context(), reservationID)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			respondWithError(w, http.StatusNotFound, "Reservation not found", err)
@@ -359,4 +344,62 @@ func (cfg *apiConfig) handlerDeleteReservations(w http.ResponseWriter, r *http.R
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func aggregateReservationDetails(reservation database.GetReservationDetailByIDRow) ReservationDetail {
+	return ReservationDetail{
+		ID:        reservation.ID,
+		CreatedAt: reservation.CreatedAt,
+		UpdatedAt: reservation.UpdatedAt,
+		User: UserSummary{
+			ID:    reservation.UserID,
+			Email: reservation.UserEmail,
+		},
+		Screening: ScreeningSummary{
+			ID:        reservation.ScreeningID,
+			StartTime: reservation.ScreeningStartTime,
+			EndTime:   reservation.ScreeningEndTime,
+			Movie: MovieSummary{
+				ID:        reservation.MovieID,
+				Title:     reservation.MovieTitle,
+				Slug:      reservation.MovieSlug,
+				PosterUrl: nullStringToPtr(reservation.MoviePosterUrl),
+			},
+		},
+		Room: RoomSummary{
+			ID:   reservation.RoomID,
+			Name: reservation.RoomName,
+		},
+		Seat: SeatSummary{
+			ID:         reservation.SeatID,
+			RowLabel:   reservation.SeatRowLabel,
+			SeatNumber: reservation.SeatNumber,
+		},
+	}
+}
+
+func aggregateReservationSummaries(reservations []database.GetReservationsSummaryRow) []ReservationSummary {
+	summaries := make([]ReservationSummary, len(reservations))
+	for i, reservation := range reservations {
+		summaries[i] = ReservationSummary{
+			ID: reservation.ID,
+			Screening: ScreeningSummary{
+				ID:        reservation.ScreeningID,
+				StartTime: reservation.ScreeningStartTime,
+				EndTime:   reservation.ScreeningEndTime,
+				Movie: MovieSummary{
+					ID:        reservation.MovieID,
+					Title:     reservation.MovieTitle,
+					Slug:      reservation.MovieSlug,
+					PosterUrl: nullStringToPtr(reservation.MoviePosterUrl),
+				},
+			},
+			Seat: SeatSummary{
+				ID:         reservation.SeatID,
+				RowLabel:   reservation.SeatRowLabel,
+				SeatNumber: reservation.SeatNumber,
+			},
+		}
+	}
+	return summaries
 }

@@ -20,7 +20,6 @@ type ScreeningSeat struct {
 type ScreeningSummary struct {
 	ID        uuid.UUID    `json:"id"`
 	Movie     MovieSummary `json:"movie"`
-	Room      RoomSummary  `json:"room"`
 	StartTime time.Time    `json:"start_time"`
 	EndTime   time.Time    `json:"end_time"`
 }
@@ -209,10 +208,6 @@ func (cfg *apiConfig) retrieveScreenings(w http.ResponseWriter, r *http.Request,
 				Title:     s.MovieTitle,
 				Slug:      s.MovieSlug,
 				PosterUrl: nullStringToPtr(s.MoviePosterUrl),
-			},
-			Room: RoomSummary{
-				ID:   s.RoomID,
-				Name: s.RoomName,
 			},
 			StartTime: s.StartTime,
 			EndTime:   s.EndTime,

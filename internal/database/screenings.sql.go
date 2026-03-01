@@ -142,9 +142,7 @@ SELECT sc.id, sc.start_time, sc.end_time,
 sc.movie_id,
 m.title AS movie_title,
 m.slug AS movie_slug,
-m.poster_url AS movie_poster_url,
-sc.room_id,
-r.name AS room_name
+m.poster_url AS movie_poster_url
 FROM screenings sc
 JOIN rooms r ON sc.room_id = r.id
 JOIN movies m ON sc.movie_id = m.id
@@ -174,8 +172,6 @@ type GetScreeningsSummaryRow struct {
 	MovieTitle     string
 	MovieSlug      string
 	MoviePosterUrl sql.NullString
-	RoomID         uuid.UUID
-	RoomName       string
 }
 
 func (q *Queries) GetScreeningsSummary(ctx context.Context, arg GetScreeningsSummaryParams) ([]GetScreeningsSummaryRow, error) {
@@ -202,8 +198,6 @@ func (q *Queries) GetScreeningsSummary(ctx context.Context, arg GetScreeningsSum
 			&i.MovieTitle,
 			&i.MovieSlug,
 			&i.MoviePosterUrl,
-			&i.RoomID,
-			&i.RoomName,
 		); err != nil {
 			return nil, err
 		}

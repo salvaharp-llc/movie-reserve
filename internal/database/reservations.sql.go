@@ -7,6 +7,8 @@ package database
 
 import (
 	"context"
+	"database/sql"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -57,13 +59,86 @@ func (q *Queries) DeleteReservation(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
-const getReservationByID = `-- name: GetReservationByID :one
-SELECT id, user_id, screening_id, room_id, seat_id, created_at, updated_at FROM reservations 
+const getReservationDetailByID = `-- name: GetReservationDetailByID :one
+SELECT 
+r.id, 
+r.created_at,
+r.updated_at,
+u.id AS user_id,
+u.email AS user_email,
+sc.id AS screening_id, 
+sc.start_time AS screening_start_time, 
+sc.end_time AS screening_end_time,  
+m.id AS movie_id,
+m.title AS movie_title,
+m.slug AS movie_slug,
+m.poster_url AS movie_poster_url,
+rm.id AS room_id,
+rm.name AS room_name,
+s.id AS seat_id,
+s.row_label AS seat_row_label,
+s.seat_number AS seat_number
+FROM reservations r
+JOIN screenings sc ON r.screening_id = sc.id
+JOIN movies m ON sc.movie_id = m.id
+JOIN seats s ON r.seat_id = s.id
+JOIN users u ON r.user_id = u.id
+JOIN rooms rm ON r.room_id = rm.id
+WHERE r.id = $1
+`
+
+type GetReservationDetailByIDRow struct {
+	ID                 uuid.UUID
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	UserID             uuid.UUID
+	UserEmail          string
+	ScreeningID        uuid.UUID
+	ScreeningStartTime time.Time
+	ScreeningEndTime   time.Time
+	MovieID            uuid.UUID
+	MovieTitle         string
+	MovieSlug          string
+	MoviePosterUrl     sql.NullString
+	RoomID             uuid.UUID
+	RoomName           string
+	SeatID             uuid.UUID
+	SeatRowLabel       string
+	SeatNumber         int32
+}
+
+func (q *Queries) GetReservationDetailByID(ctx context.Context, id uuid.UUID) (GetReservationDetailByIDRow, error) {
+	row := q.db.QueryRowContext(ctx, getReservationDetailByID, id)
+	var i GetReservationDetailByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.UserID,
+		&i.UserEmail,
+		&i.ScreeningID,
+		&i.ScreeningStartTime,
+		&i.ScreeningEndTime,
+		&i.MovieID,
+		&i.MovieTitle,
+		&i.MovieSlug,
+		&i.MoviePosterUrl,
+		&i.RoomID,
+		&i.RoomName,
+		&i.SeatID,
+		&i.SeatRowLabel,
+		&i.SeatNumber,
+	)
+	return i, err
+}
+
+const getReservationMetaByID = `-- name: GetReservationMetaByID :one
+SELECT id, user_id, screening_id, room_id, seat_id, created_at, updated_at FROM reservations
 WHERE id = $1
 `
 
-func (q *Queries) GetReservationByID(ctx context.Context, id uuid.UUID) (Reservation, error) {
-	row := q.db.QueryRowContext(ctx, getReservationByID, id)
+func (q *Queries) GetReservationMetaByID(ctx context.Context, id uuid.UUID) (Reservation, error) {
+	row := q.db.QueryRowContext(ctx, getReservationMetaByID, id)
 	var i Reservation
 	err := row.Scan(
 		&i.ID,
@@ -77,19 +152,33 @@ func (q *Queries) GetReservationByID(ctx context.Context, id uuid.UUID) (Reserva
 	return i, err
 }
 
-const getReservations = `-- name: GetReservations :many
-SELECT r.id, r.user_id, r.screening_id, r.room_id, r.seat_id, r.created_at, r.updated_at FROM reservations r
-JOIN screenings s ON r.screening_id = s.id
+const getReservationsSummary = `-- name: GetReservationsSummary :many
+SELECT 
+r.id, 
+sc.id AS screening_id, 
+sc.start_time AS screening_start_time, 
+sc.end_time AS screening_end_time,  
+m.id AS movie_id,
+m.title AS movie_title,
+m.slug AS movie_slug,
+m.poster_url AS movie_poster_url,
+s.id AS seat_id,
+s.row_label AS seat_row_label,
+s.seat_number AS seat_number
+FROM reservations r
+JOIN screenings sc ON r.screening_id = sc.id
+JOIN movies m ON sc.movie_id = m.id
+JOIN seats s ON r.seat_id = s.id
 WHERE ($1::uuid IS NULL OR r.user_id = $1)
   AND ($2::uuid IS NULL OR r.screening_id = $2)
-  AND ($3::uuid IS NULL OR s.movie_id = $3)
+  AND ($3::uuid IS NULL OR sc.movie_id = $3)
   AND ($4::uuid IS NULL OR r.room_id = $4)
 ORDER BY r.created_at DESC
 LIMIT $6
 OFFSET $5
 `
 
-type GetReservationsParams struct {
+type GetReservationsSummaryParams struct {
 	UserID      uuid.NullUUID
 	ScreeningID uuid.NullUUID
 	MovieID     uuid.NullUUID
@@ -98,8 +187,22 @@ type GetReservationsParams struct {
 	Limit       int32
 }
 
-func (q *Queries) GetReservations(ctx context.Context, arg GetReservationsParams) ([]Reservation, error) {
-	rows, err := q.db.QueryContext(ctx, getReservations,
+type GetReservationsSummaryRow struct {
+	ID                 uuid.UUID
+	ScreeningID        uuid.UUID
+	ScreeningStartTime time.Time
+	ScreeningEndTime   time.Time
+	MovieID            uuid.UUID
+	MovieTitle         string
+	MovieSlug          string
+	MoviePosterUrl     sql.NullString
+	SeatID             uuid.UUID
+	SeatRowLabel       string
+	SeatNumber         int32
+}
+
+func (q *Queries) GetReservationsSummary(ctx context.Context, arg GetReservationsSummaryParams) ([]GetReservationsSummaryRow, error) {
+	rows, err := q.db.QueryContext(ctx, getReservationsSummary,
 		arg.UserID,
 		arg.ScreeningID,
 		arg.MovieID,
@@ -111,54 +214,21 @@ func (q *Queries) GetReservations(ctx context.Context, arg GetReservationsParams
 		return nil, err
 	}
 	defer rows.Close()
-	var items []Reservation
+	var items []GetReservationsSummaryRow
 	for rows.Next() {
-		var i Reservation
+		var i GetReservationsSummaryRow
 		if err := rows.Scan(
 			&i.ID,
-			&i.UserID,
 			&i.ScreeningID,
-			&i.RoomID,
+			&i.ScreeningStartTime,
+			&i.ScreeningEndTime,
+			&i.MovieID,
+			&i.MovieTitle,
+			&i.MovieSlug,
+			&i.MoviePosterUrl,
 			&i.SeatID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Close(); err != nil {
-		return nil, err
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getReservationsByUserID = `-- name: GetReservationsByUserID :many
-SELECT id, user_id, screening_id, room_id, seat_id, created_at, updated_at FROM reservations
-WHERE user_id = $1
-ORDER BY created_at DESC
-`
-
-func (q *Queries) GetReservationsByUserID(ctx context.Context, userID uuid.UUID) ([]Reservation, error) {
-	rows, err := q.db.QueryContext(ctx, getReservationsByUserID, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Reservation
-	for rows.Next() {
-		var i Reservation
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.ScreeningID,
-			&i.RoomID,
-			&i.SeatID,
-			&i.CreatedAt,
-			&i.UpdatedAt,
+			&i.SeatRowLabel,
+			&i.SeatNumber,
 		); err != nil {
 			return nil, err
 		}
