@@ -63,61 +63,13 @@ go run .
 
 ---
 
-## Usage
+## API Reference
 
-### Public endpoints (no authentication required)
+The full API is documented via OpenAPI. You can view the interactive documentation in Swagger UI:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/healthz` | Health check |
-| POST | `/api/users` | Register a new user |
-| POST | `/api/login` | Login and receive tokens |
-| POST | `/api/refresh` | Refresh access token |
-| POST | `/api/revoke` | Revoke refresh token |
-| GET | `/api/genres` | List all genres |
-| GET | `/api/genres/{genreID}` | Get a genre by ID |
-| GET | `/api/movies` | List all movies |
-| GET | `/api/movies/{movieID}` | Get a movie by ID |
-| GET | `/api/movies/current` | List currently showing movies |
-| GET | `/api/rooms` | List all rooms |
-| GET | `/api/rooms/{roomID}` | Get a room by ID |
-| GET | `/api/screenings` | List upcoming screenings |
-| GET | `/api/screenings/{screeningID}` | Get a screening by ID |
-| GET | `/api/seats/{seatID}` | Get a seat by ID |
+[**View API Docs**](https://petstore.swagger.io/?url=https://raw.githubusercontent.com/salvaharp-llc/movie-reserve/refs/heads/main/openapi.yaml)
 
-### Authenticated endpoints (valid JWT required)
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| PUT | `/api/users` | Update current user |
-| POST | `/api/reservations` | Create a reservation |
-| GET | `/api/reservations` | List current user's reservations |
-| GET | `/api/reservations/{reservationID}` | Get a reservation by ID |
-| DELETE | `/api/reservations/{reservationID}` | Cancel a reservation |
-
-### Admin-only endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/movies` | Create a movie |
-| PUT | `/api/movies/{movieID}` | Update a movie |
-| DELETE | `/api/movies/{movieID}` | Delete a movie |
-| POST | `/api/poster_upload/{movieID}` | Upload a movie poster |
-| POST | `/api/genres` | Create a genre |
-| PUT | `/api/genres/{genreID}` | Update a genre |
-| DELETE | `/api/genres/{genreID}` | Delete a genre |
-| POST | `/api/rooms` | Create a room |
-| PUT | `/api/rooms/{roomID}` | Update a room |
-| DELETE | `/api/rooms/{roomID}` | Delete a room |
-| POST | `/api/screenings` | Create a screening |
-| GET | `/api/screenings/all` | List all screenings (no date limit) |
-| PUT | `/api/screenings/{screeningID}` | Update a screening |
-| DELETE | `/api/screenings/{screeningID}` | Delete a screening |
-| POST | `/api/seats` | Create a seat |
-| PUT | `/api/seats/{seatID}` | Update a seat |
-| DELETE | `/api/seats/{seatID}` | Delete a seat |
-| GET | `/api/reservations/all` | List all reservations |
-| PUT | `/api/reservations/{reservationID}` | Update a reservation |
+This provides a complete, interactive guide to all endpoints, including request and response schemas.
 
 ### Dev / test endpoints (only available when `PLATFORM=dev`)
 
