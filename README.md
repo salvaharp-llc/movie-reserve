@@ -63,7 +63,7 @@ go run .
 
 ---
 
-## API Reference
+## Usage
 
 The full API is documented via OpenAPI. You can view the interactive documentation in Swagger UI:
 
