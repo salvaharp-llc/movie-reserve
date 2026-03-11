@@ -4,12 +4,21 @@ import (
 	"database/sql"
 	"log"
 	"net/http"
-	"os"
 
+	"github.com/caarlos0/env"
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
 )
+
+type Config struct {
+	DBURL        string `env:"DB_URL,required"`
+	JWTSecret    string `env:"JWT_SECRET,required"`
+	Platform     string `env:"PLATFORM,required"`
+	FilepathRoot string `env:"FILEPATH_ROOT,required"`
+	AssetsRoot   string `env:"ASSETS_ROOT,required"`
+	Port         string `env:"PORT,required"`
+}
 
 type apiConfig struct {
 	db         *database.Queries
@@ -21,32 +30,13 @@ type apiConfig struct {
 
 func main() {
 	godotenv.Load()
-	dbURL := os.Getenv("DB_URL")
-	if dbURL == "" {
-		log.Fatal("DB_URL must be set")
-	}
-	JWTSecret := os.Getenv("JWT_SECRET")
-	if JWTSecret == "" {
-		log.Fatal("JWT_SECRET must be set")
-	}
-	platform := os.Getenv("PLATFORM")
-	if platform == "" {
-		log.Fatal("PLATFORM must be set")
-	}
-	filepathRoot := os.Getenv("FILEPATH_ROOT")
-	if filepathRoot == "" {
-		log.Fatal("FILEPATH_ROOT environment variable is not set")
-	}
-	assetsRoot := os.Getenv("ASSETS_ROOT")
-	if assetsRoot == "" {
-		log.Fatal("ASSETS_ROOT environment variable is not set")
-	}
-	port := os.Getenv("PORT")
-	if port == "" {
-		log.Fatal("PORT environment variable is not set")
+
+	cfg := Config{}
+	if err := env.Parse(&cfg); err != nil {
+		log.Fatalf("Failed to parse environment variables: %v", err)
 	}
 
-	db, err := sql.Open("postgres", dbURL)
+	db, err := sql.Open("postgres", cfg.DBURL)
 	if err != nil {
 		log.Fatalf("Could not open database: %v", err)
 	}
@@ -54,10 +44,10 @@ func main() {
 
 	apiCfg := apiConfig{
 		db:         dbQueries,
-		jwtSecret:  JWTSecret,
-		platform:   platform,
-		assetsRoot: assetsRoot,
-		port:       port,
+		jwtSecret:  cfg.JWTSecret,
+		platform:   cfg.Platform,
+		assetsRoot: cfg.AssetsRoot,
+		port:       cfg.Port,
 	}
 
 	if err := apiCfg.ensureAdmin(); err != nil {
@@ -69,10 +59,10 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	fsHandler := http.StripPrefix("/app", http.FileServer(http.Dir(filepathRoot)))
+	fsHandler := http.StripPrefix("/app", http.FileServer(http.Dir(cfg.FilepathRoot)))
 	mux.Handle("/app/", fsHandler)
 
-	assetsHandler := http.StripPrefix("/assets", http.FileServer(http.Dir(assetsRoot)))
+	assetsHandler := http.StripPrefix("/assets", http.FileServer(http.Dir(cfg.AssetsRoot)))
 	mux.Handle("/assets/", assetsHandler)
 
 	// Public routes (no auth required)
@@ -136,10 +126,10 @@ func main() {
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
 
 	server := http.Server{
-		Addr:    ":" + port,
+		Addr:    ":" + cfg.Port,
 		Handler: mux,
 	}
 
-	log.Printf("Serving files from %s on port: %s\n", filepathRoot, port)
+	log.Printf("Serving files from %s on port: %s\n", cfg.FilepathRoot, cfg.Port)
 	log.Fatal(server.ListenAndServe())
 }
