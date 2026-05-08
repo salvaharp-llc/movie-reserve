@@ -85,7 +85,7 @@ func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request)
 		User
 	}
 
-	userID, err := GetUserID(r.Context())
+	userID, err := getUserID(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find user id", err)
 		return

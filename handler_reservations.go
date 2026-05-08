@@ -45,7 +45,7 @@ func (cfg *apiConfig) handlerCreateReservations(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	userID, err := GetUserID(r.Context())
+	userID, err := getUserID(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find user id", err)
 		return
@@ -99,12 +99,12 @@ func (cfg *apiConfig) handlerGetReservations(w http.ResponseWriter, r *http.Requ
 		ReservationDetail `json:"reservation"`
 	}
 
-	userID, err := GetUserID(r.Context())
+	userID, err := getUserID(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find user id", err)
 		return
 	}
-	userRole, err := GetUserRole(r.Context())
+	userRole, err := getUserRole(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find user role", err)
 		return
@@ -144,7 +144,7 @@ func (cfg *apiConfig) handlerRetrieveReservations(w http.ResponseWriter, r *http
 		Reservations []ReservationSummary `json:"reservations"`
 	}
 
-	userID, err := GetUserID(r.Context())
+	userID, err := getUserID(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find user id", err)
 		return
@@ -304,12 +304,12 @@ func (cfg *apiConfig) handlerUpdateReservations(w http.ResponseWriter, r *http.R
 }
 
 func (cfg *apiConfig) handlerDeleteReservations(w http.ResponseWriter, r *http.Request) {
-	userID, err := GetUserID(r.Context())
+	userID, err := getUserID(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find user id", err)
 		return
 	}
-	userRole, err := GetUserRole(r.Context())
+	userRole, err := getUserRole(r.Context())
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not find user role", err)
 		return
