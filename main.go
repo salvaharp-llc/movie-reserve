@@ -59,71 +59,75 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
-	fsHandler := http.StripPrefix("/app", http.FileServer(http.Dir(cfg.FilepathRoot)))
-	mux.Handle("/app/", fsHandler)
+	publicMux := http.NewServeMux()
+	userMux := http.NewServeMux()
+	adminMux := http.NewServeMux()
 
-	assetsHandler := http.StripPrefix("/assets", http.FileServer(http.Dir(cfg.AssetsRoot)))
-	mux.Handle("/assets/", assetsHandler)
+	mux.Handle("/app/", http.StripPrefix("/app", http.FileServer(http.Dir(cfg.FilepathRoot))))
+	mux.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir(cfg.AssetsRoot))))
 
-	// Public routes (no auth required)
-	mux.HandleFunc("GET /api/healthz", handlerReadiness)
+	publicMux.HandleFunc("GET /api/healthz", handlerReadiness)
 
-	mux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
-	mux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
-	mux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
-	mux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
+	publicMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
+	publicMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
+	publicMux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
+	publicMux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
 
-	mux.HandleFunc("GET /api/genres/{genreID}", apiCfg.handlerGetGenres)
-	mux.HandleFunc("GET /api/genres", apiCfg.handlerRetrieveGenres)
+	publicMux.HandleFunc("GET /api/genres/{genreID}", apiCfg.handlerGetGenres)
+	publicMux.HandleFunc("GET /api/genres", apiCfg.handlerRetrieveGenres)
 
-	mux.HandleFunc("GET /api/movies/{movieID}", apiCfg.handlerGetMovies)
-	mux.HandleFunc("GET /api/movies", apiCfg.handlerRetrieveMovies)
-	mux.HandleFunc("GET /api/movies/current", apiCfg.handlerRetrieveCurrentMovies)
+	publicMux.HandleFunc("GET /api/movies/{movieID}", apiCfg.handlerGetMovies)
+	publicMux.HandleFunc("GET /api/movies", apiCfg.handlerRetrieveMovies)
+	publicMux.HandleFunc("GET /api/movies/current", apiCfg.handlerRetrieveCurrentMovies)
 
-	mux.HandleFunc("GET /api/rooms/{roomID}", apiCfg.handlerGetRooms)
-	mux.HandleFunc("GET /api/rooms", apiCfg.handlerRetrieveRooms)
+	publicMux.HandleFunc("GET /api/rooms/{roomID}", apiCfg.handlerGetRooms)
+	publicMux.HandleFunc("GET /api/rooms", apiCfg.handlerRetrieveRooms)
 
-	mux.HandleFunc("GET /api/screenings/{screeningID}", apiCfg.handlerGetScreenings)
-	mux.HandleFunc("GET /api/screenings", apiCfg.handlerRetrieveScreenings) // Only upcoming screenings for public
+	publicMux.HandleFunc("GET /api/screenings/{screeningID}", apiCfg.handlerGetScreenings)
+	publicMux.HandleFunc("GET /api/screenings", apiCfg.handlerRetrieveScreenings) // Only upcoming screenings for public
 
-	mux.HandleFunc("GET /api/seats/{seatID}", apiCfg.handlerGetSeats)
+	publicMux.HandleFunc("GET /api/seats/{seatID}", apiCfg.handlerGetSeats)
 
-	// Routes requiring valid auth token
-	mux.HandleFunc("PUT /api/users", apiCfg.RequireAuth(apiCfg.handlerUpdateUsers))
+	// Routes requiring user login
+	userMux.HandleFunc("PUT /api/users", apiCfg.handlerUpdateUsers)
 
-	mux.HandleFunc("POST /api/reservations", apiCfg.RequireAuth(apiCfg.handlerCreateReservations))
-	mux.HandleFunc("GET /api/reservations", apiCfg.RequireAuth(apiCfg.handlerRetrieveReservations)) // Only user's reservations for public
-	mux.HandleFunc("GET /api/reservations/{reservationID}", apiCfg.RequireAuth(apiCfg.handlerGetReservations))
-	mux.HandleFunc("DELETE /api/reservations/{reservationID}", apiCfg.RequireAuth(apiCfg.handlerDeleteReservations))
+	userMux.HandleFunc("POST /api/reservations", apiCfg.handlerCreateReservations)
+	userMux.HandleFunc("GET /api/reservations", apiCfg.handlerRetrieveReservations) // Only user's reservations for public
+	userMux.HandleFunc("GET /api/reservations/{reservationID}", apiCfg.handlerGetReservations)
+	userMux.HandleFunc("DELETE /api/reservations/{reservationID}", apiCfg.handlerDeleteReservations)
 
 	// Routes requiring admin role
-	mux.HandleFunc("POST /api/movies", apiCfg.RequireAdmin(apiCfg.handlerCreateMovies))
-	mux.HandleFunc("PUT /api/movies/{movieID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateMovies))
-	mux.HandleFunc("DELETE /api/movies/{movieID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteMovies))
-	mux.HandleFunc("POST /api/poster_upload/{movieID}", apiCfg.RequireAdmin(apiCfg.handlerUploadPoster))
+	adminMux.HandleFunc("POST /api/movies", apiCfg.handlerCreateMovies)
+	adminMux.HandleFunc("PUT /api/movies/{movieID}", apiCfg.handlerUpdateMovies)
+	adminMux.HandleFunc("DELETE /api/movies/{movieID}", apiCfg.handlerDeleteMovies)
+	adminMux.HandleFunc("POST /api/poster_upload/{movieID}", apiCfg.handlerUploadPoster)
 
-	mux.HandleFunc("POST /api/genres", apiCfg.RequireAdmin(apiCfg.handlerCreateGenres))
-	mux.HandleFunc("PUT /api/genres/{genreID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateGenres))
-	mux.HandleFunc("DELETE /api/genres/{genreID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteGenres))
+	adminMux.HandleFunc("POST /api/genres", apiCfg.handlerCreateGenres)
+	adminMux.HandleFunc("PUT /api/genres/{genreID}", apiCfg.handlerUpdateGenres)
+	adminMux.HandleFunc("DELETE /api/genres/{genreID}", apiCfg.handlerDeleteGenres)
 
-	mux.HandleFunc("POST /api/rooms", apiCfg.RequireAdmin(apiCfg.handlerCreateRooms))
-	mux.HandleFunc("PUT /api/rooms/{roomID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateRooms))
-	mux.HandleFunc("DELETE /api/rooms/{roomID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteRooms))
+	adminMux.HandleFunc("POST /api/rooms", apiCfg.handlerCreateRooms)
+	adminMux.HandleFunc("PUT /api/rooms/{roomID}", apiCfg.handlerUpdateRooms)
+	adminMux.HandleFunc("DELETE /api/rooms/{roomID}", apiCfg.handlerDeleteRooms)
 
-	mux.HandleFunc("POST /api/screenings", apiCfg.RequireAdmin(apiCfg.handlerCreateScreenings))
-	mux.HandleFunc("GET /api/screenings/all", apiCfg.RequireAdmin(apiCfg.handlerRetrieveScreeningsAdmin)) // Non-limited dates for admin
-	mux.HandleFunc("PUT /api/screenings/{screeningID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateScreenings))
-	mux.HandleFunc("DELETE /api/screenings/{screeningID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteScreenings))
+	adminMux.HandleFunc("POST /api/screenings", apiCfg.handlerCreateScreenings)
+	adminMux.HandleFunc("GET /api/screenings/all", apiCfg.handlerRetrieveScreeningsAdmin) // Non-limited dates for admin
+	adminMux.HandleFunc("PUT /api/screenings/{screeningID}", apiCfg.handlerUpdateScreenings)
+	adminMux.HandleFunc("DELETE /api/screenings/{screeningID}", apiCfg.handlerDeleteScreenings)
 
-	mux.HandleFunc("POST /api/seats", apiCfg.RequireAdmin(apiCfg.handlerCreateSeats))
-	mux.HandleFunc("PUT /api/seats/{seatID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateSeats))
-	mux.HandleFunc("DELETE /api/seats/{seatID}", apiCfg.RequireAdmin(apiCfg.handlerDeleteSeats))
+	adminMux.HandleFunc("POST /api/seats", apiCfg.handlerCreateSeats)
+	adminMux.HandleFunc("PUT /api/seats/{seatID}", apiCfg.handlerUpdateSeats)
+	adminMux.HandleFunc("DELETE /api/seats/{seatID}", apiCfg.handlerDeleteSeats)
 
-	mux.HandleFunc("GET /api/reservations/all", apiCfg.RequireAdmin(apiCfg.handlerRetrieveReservationsAdmin)) // Non-limited reservations for admin
-	mux.HandleFunc("PUT /api/reservations/{reservationID}", apiCfg.RequireAdmin(apiCfg.handlerUpdateReservations))
+	adminMux.HandleFunc("GET /api/reservations/all", apiCfg.handlerRetrieveReservationsAdmin) // Non-limited reservations for admin
+	adminMux.HandleFunc("PUT /api/reservations/{reservationID}", apiCfg.handlerUpdateReservations)
 
 	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
+
+	mux.Handle("/public/", http.StripPrefix("/public", publicMux))
+	mux.Handle("/user/", http.StripPrefix("/user", apiCfg.requireAuthMiddleware(userMux)))
+	mux.Handle("/admin/", http.StripPrefix("/admin", apiCfg.requireAdminMiddleware(adminMux)))
 
 	server := http.Server{
 		Addr:    ":" + cfg.Port,

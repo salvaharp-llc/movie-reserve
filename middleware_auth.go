@@ -16,8 +16,8 @@ const (
 	userRoleKey contextKey = "userRole"
 )
 
-func (cfg *apiConfig) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) requireAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		token, err := auth.GetBearerToken(r.Header)
 		if err != nil {
 			respondWithError(w, http.StatusUnauthorized, "Could not get token from header", err)
@@ -33,28 +33,29 @@ func (cfg *apiConfig) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 		ctx := context.WithValue(r.Context(), userIDKey, userID)
 		ctx = context.WithValue(ctx, userRoleKey, role)
 
-		next(w, r.WithContext(ctx))
-	}
-}
-
-func (cfg *apiConfig) RequireAdmin(next http.HandlerFunc) http.HandlerFunc {
-	return cfg.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
-		role, err := GetUserRole(r.Context())
-		if err != nil {
-			respondWithError(w, http.StatusInternalServerError, "Could not find user role", err)
-			return
-		}
-
-		if role != auth.RoleAdmin {
-			respondWithError(w, http.StatusForbidden, "Admin users only", nil)
-			return
-		}
-
-		next(w, r)
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-func GetUserID(ctx context.Context) (uuid.UUID, error) {
+func (cfg *apiConfig) requireAdminMiddleware(next http.Handler) http.Handler {
+	return cfg.requireAuthMiddleware(http.HandlerFunc(
+		func(w http.ResponseWriter, r *http.Request) {
+			role, err := getUserRole(r.Context())
+			if err != nil {
+				respondWithError(w, http.StatusInternalServerError, "Could not find user role", err)
+				return
+			}
+
+			if role != auth.RoleAdmin {
+				respondWithError(w, http.StatusForbidden, "Admin users only", nil)
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		}))
+}
+
+func getUserID(ctx context.Context) (uuid.UUID, error) {
 	userID, ok := ctx.Value(userIDKey).(uuid.UUID)
 	if !ok {
 		return uuid.UUID{}, errors.New("user id missing from context; ensure RequireAuth middleware is applied")
@@ -62,7 +63,7 @@ func GetUserID(ctx context.Context) (uuid.UUID, error) {
 	return userID, nil
 }
 
-func GetUserRole(ctx context.Context) (string, error) {
+func getUserRole(ctx context.Context) (string, error) {
 	role, ok := ctx.Value(userRoleKey).(string)
 	if !ok {
 		return "", errors.New("user role missing from context; ensure RequireAuth middleware is applied")
