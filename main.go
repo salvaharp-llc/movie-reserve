@@ -28,6 +28,17 @@ type apiConfig struct {
 	port       string
 }
 
+const (
+	staticRateLimit float64 = 10
+	staticRateBurst int     = 50
+	publicRateLimit float64 = 10
+	publicRateBurst int     = 20
+	userRateLimit   float64 = 5
+	userRateBurst   int     = 10
+	adminRateLimit  float64 = 2
+	adminRateBurst  int     = 5
+)
+
 func main() {
 	godotenv.Load()
 
@@ -59,12 +70,13 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	staticMux := http.NewServeMux()
 	publicMux := http.NewServeMux()
 	userMux := http.NewServeMux()
 	adminMux := http.NewServeMux()
 
-	mux.Handle("/app/", http.StripPrefix("/app", http.FileServer(http.Dir(cfg.FilepathRoot))))
-	mux.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir(cfg.AssetsRoot))))
+	staticMux.Handle("/app/", http.StripPrefix("/app", http.FileServer(http.Dir(cfg.FilepathRoot))))
+	staticMux.Handle("/assets/", http.StripPrefix("/assets", http.FileServer(http.Dir(cfg.AssetsRoot))))
 
 	publicMux.HandleFunc("GET /api/healthz", handlerReadiness)
 
@@ -125,9 +137,35 @@ func main() {
 	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)
 
-	mux.Handle("/public/", http.StripPrefix("/public", publicMux))
-	mux.Handle("/user/", http.StripPrefix("/user", apiCfg.requireAuthMiddleware(userMux)))
-	mux.Handle("/admin/", http.StripPrefix("/admin", apiCfg.requireAdminMiddleware(adminMux)))
+	mux.Handle("/static/",
+		rateLimiterMiddleware(
+			http.StripPrefix("/static", staticMux),
+			staticRateLimit,
+			staticRateBurst,
+		),
+	)
+
+	mux.Handle("/public/",
+		rateLimiterMiddleware(
+			http.StripPrefix("/public", publicMux),
+			publicRateLimit,
+			publicRateBurst,
+		),
+	)
+	mux.Handle("/user/",
+		rateLimiterMiddleware(
+			http.StripPrefix("/user", apiCfg.requireAuthMiddleware(userMux)),
+			userRateLimit,
+			userRateBurst,
+		),
+	)
+	mux.Handle("/admin/",
+		rateLimiterMiddleware(
+			http.StripPrefix("/admin", apiCfg.requireAdminMiddleware(adminMux)),
+			adminRateLimit,
+			adminRateBurst,
+		),
+	)
 
 	server := http.Server{
 		Addr:    ":" + cfg.Port,

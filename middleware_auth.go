@@ -3,10 +3,15 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/salvaharp-llc/movie-reserve/internal/auth"
+	"github.com/salvaharp-llc/movie-reserve/internal/ratelimit"
+	"golang.org/x/time/rate"
 )
 
 type contextKey string
@@ -15,6 +20,8 @@ const (
 	userIDKey   contextKey = "userID"
 	userRoleKey contextKey = "userRole"
 )
+
+const ipDuration time.Duration = time.Minute
 
 func (cfg *apiConfig) requireAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -55,6 +62,30 @@ func (cfg *apiConfig) requireAdminMiddleware(next http.Handler) http.Handler {
 		}))
 }
 
+func rateLimiterMiddleware(next http.Handler, limit float64, burst int) http.Handler {
+	ipLimiter := ratelimit.NewIpLimiter(ipDuration)
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip, err := getIP(r)
+		if err != nil {
+			respondWithError(w, http.StatusBadRequest, err.Error(), err)
+			return
+		}
+
+		limiter, exists := ipLimiter.Get(ip)
+		if !exists {
+			limiter = ipLimiter.Add(ip, rate.Limit(limit), burst)
+		}
+
+		if !limiter.Allow() {
+			respondWithError(w, http.StatusTooManyRequests, "error: too many requests", nil)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 func getUserID(ctx context.Context) (uuid.UUID, error) {
 	userID, ok := ctx.Value(userIDKey).(uuid.UUID)
 	if !ok {
@@ -69,4 +100,12 @@ func getUserRole(ctx context.Context) (string, error) {
 		return "", errors.New("user role missing from context; ensure RequireAuth middleware is applied")
 	}
 	return role, nil
+}
+
+func getIP(r *http.Request) (string, error) {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return "", fmt.Errorf("error parsing IP: %v", err)
+	}
+	return host, nil
 }

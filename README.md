@@ -83,23 +83,3 @@ This provides a complete, interactive guide to all endpoints, including request 
 |------|-------------|
 | `/app/` | Served from `FILEPATH_ROOT` |
 | `/assets/` | Served from `ASSETS_ROOT` |
-
----
-
-## Contributing
-
-Contributions are welcome! Here are some areas actively being worked on:
-
-- SQL transactions for atomicity
-- Improved error responses
-- Pagination tweaks
-- Query parameter to control resource format (detail vs. summary)
-- External login (e.g. Google OAuth)
-- Payment integration via webhook
-- Frontend
-
-To contribute, fork the repository, create a feature branch, and open a pull request. Please keep changes focused and include a clear description of what you've added or fixed.
-
----
-
-MIT License
