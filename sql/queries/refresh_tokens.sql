@@ -18,3 +18,8 @@ WHERE refresh_tokens.token = $1
   AND refresh_tokens.expires_at > NOW()
   AND users.id = refresh_tokens.user_id
 RETURNING refresh_tokens.user_id, users.role;
+
+-- name: RevokeRefreshTokens :exec
+UPDATE refresh_tokens
+SET updated_at = NOW(), revoked_at = NOW()
+WHERE user_id = $1;

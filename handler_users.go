@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -76,13 +77,10 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 	})
 }
 
-func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request) {
+func (cfg *apiConfig) handlerUpdatePassword(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-	type response struct {
-		User
+		CurrentPassword string `json:"current_password"`
+		NewPassword     string `json:"new_password"`
 	}
 
 	userID, err := getUserID(r.Context())
@@ -99,38 +97,55 @@ func (cfg *apiConfig) handlerUpdateUsers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	if strings.TrimSpace(params.Email) == "" {
-		respondWithError(w, http.StatusBadRequest, "email required", nil)
+	if strings.TrimSpace(params.CurrentPassword) == "" {
+		respondWithError(w, http.StatusBadRequest, "current password required", nil)
 		return
 	}
-	if strings.TrimSpace(params.Password) == "" {
-		respondWithError(w, http.StatusBadRequest, "password required", nil)
+	if strings.TrimSpace(params.NewPassword) == "" {
+		respondWithError(w, http.StatusBadRequest, "new password required", nil)
 		return
 	}
 
-	hashedPassword, err := auth.HashPassword(params.Password)
+	if params.CurrentPassword == params.NewPassword {
+		respondWithError(w, http.StatusBadRequest, "new password cannot be the same as current password", nil)
+		return
+	}
+
+	user, err := cfg.db.GetUserByID(r.Context(), userID)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error hashing password", err)
+		respondWithError(w, http.StatusInternalServerError, "Error geting user", err)
 		return
 	}
 
-	user, err := cfg.db.UpdateUser(r.Context(), database.UpdateUserParams{
+	match, err := auth.CheckPasswordHash(params.CurrentPassword, user.HashedPassword)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not check password", err)
+		return
+	}
+	if !match {
+		respondWithError(w, http.StatusUnauthorized, "Incorrect password", err)
+		return
+	}
+
+	newHashedPassword, err := auth.HashPassword(params.NewPassword)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not hash new password", err)
+		return
+	}
+
+	err = cfg.db.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
 		ID:             userID,
-		Email:          params.Email,
-		HashedPassword: hashedPassword,
+		HashedPassword: newHashedPassword,
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error updating user", err)
+		respondWithError(w, http.StatusInternalServerError, "Error updating password", err)
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, response{
-		User: User{
-			ID:        user.ID,
-			CreatedAt: user.CreatedAt,
-			UpdatedAt: user.UpdatedAt,
-			Email:     user.Email,
-			Role:      user.Role,
-		},
-	})
+	err = cfg.db.RevokeRefreshTokens(r.Context(), userID)
+	if err != nil {
+		log.Printf("Couldn't revoke refresh tokens after password update for user %s: %s", userID.String(), err.Error())
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

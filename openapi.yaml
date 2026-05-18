@@ -4,16 +4,16 @@ info:
   description: A backend REST API for reserving seats at movie screenings, built in Go.
   version: 1.0.0
 servers:
-  - url: http://localhost:8080/api
+  - url: http://localhost:8080
     description: Local server
 paths:
-  /healthz:
+  /public/api/healthz:
     get:
       summary: Health check
       responses:
         '200':
           description: OK
-  /users:
+  /public/api/users:
     post:
       summary: Register a new user
       requestBody:
@@ -29,8 +29,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+  /user/api/users/password:
     put:
-      summary: Update current user
+      summary: Change password
       security:
         - bearerAuth: []
       requestBody:
@@ -38,15 +39,11 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UpdateUser'
+              $ref: '#/components/schemas/UpdatePassword'
       responses:
-        '200':
-          description: User updated successfully
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/User'
-  /login:
+        '204':
+          description: Password changed successfully
+  /public/api/login:
     post:
       summary: Login and receive tokens
       requestBody:
@@ -62,7 +59,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Tokens'
-  /refresh:
+  /public/api/refresh:
     post:
       summary: Refresh access token
       requestBody:
@@ -84,7 +81,7 @@ paths:
                 properties:
                   access_token:
                     type: string
-  /revoke:
+  /public/api/revoke:
     post:
       summary: Revoke refresh token
       requestBody:
@@ -99,7 +96,7 @@ paths:
       responses:
         '204':
           description: Token revoked successfully
-  /genres:
+  /public/api/genres:
     get:
       summary: List all genres
       responses:
@@ -128,7 +125,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Genre'
-  /genres/{genreID}:
+  /public/api/genres/{genreID}:
     get:
       summary: Get a genre by ID
       parameters:
@@ -183,7 +180,7 @@ paths:
       responses:
         '204':
           description: Genre deleted successfully
-  /movies:
+  /public/api/movies:
     get:
       summary: List all movies
       responses:
@@ -212,7 +209,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/MovieDetail'
-  /movies/current:
+  /public/api/movies/current:
     get:
       summary: List currently showing movies
       responses:
@@ -224,7 +221,7 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/MovieSummary'
-  /movies/{movieID}:
+  /public/api/movies/{movieID}:
     get:
       summary: Get a movie by ID
       parameters:
@@ -279,7 +276,7 @@ paths:
       responses:
         '204':
           description: Movie deleted successfully
-  /poster_upload/{movieID}:
+  /admin/api/poster_upload/{movieID}:
     post:
       summary: Upload a movie poster
       security:
@@ -336,13 +333,12 @@ components:
           format: email
         password:
           type: string
-    UpdateUser:
+    UpdatePassword:
       type: object
       properties:
-        email:
+        current_password:
           type: string
-          format: email
-        password:
+        new_password:
           type: string
     Login:
       type: object
