@@ -9,6 +9,7 @@ import (
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
+	"github.com/salvaharp-llc/movie-reserve/internal/email"
 )
 
 type Config struct {
@@ -18,14 +19,19 @@ type Config struct {
 	FilepathRoot string `env:"FILEPATH_ROOT,required"`
 	AssetsRoot   string `env:"ASSETS_ROOT,required"`
 	Port         string `env:"PORT,required"`
+	MailHost     string `env:"MAIL_HOST,required"`
+	MailPort     string `env:"MAIL_PORT,required"`
+	MailUsername string `env:"MAIL_USERNAME,required"`
+	MailPassword string `env:"MAIL_PASSWORD,required"`
 }
 
 type apiConfig struct {
-	db         *database.Queries
-	jwtSecret  string
-	platform   string
-	assetsRoot string
-	port       string
+	db          *database.Queries
+	emailSender *email.EmailSender
+	jwtSecret   string
+	platform    string
+	assetsRoot  string
+	port        string
 }
 
 const (
@@ -53,12 +59,18 @@ func main() {
 	}
 	dbQueries := database.New(db)
 
+	emailSender, err := email.NewEmailSender(cfg.MailHost, cfg.MailPort, cfg.MailUsername, cfg.MailPassword)
+	if err != nil {
+		log.Fatalf("Failed to initialize email sender: %v", err)
+	}
+
 	apiCfg := apiConfig{
-		db:         dbQueries,
-		jwtSecret:  cfg.JWTSecret,
-		platform:   cfg.Platform,
-		assetsRoot: cfg.AssetsRoot,
-		port:       cfg.Port,
+		db:          dbQueries,
+		emailSender: emailSender,
+		jwtSecret:   cfg.JWTSecret,
+		platform:    cfg.Platform,
+		assetsRoot:  cfg.AssetsRoot,
+		port:        cfg.Port,
 	}
 
 	if err := apiCfg.ensureAdmin(); err != nil {
@@ -101,7 +113,7 @@ func main() {
 	publicMux.HandleFunc("GET /api/seats/{seatID}", apiCfg.handlerGetSeats)
 
 	// Routes requiring user login
-	userMux.HandleFunc("PUT /api/users/password", apiCfg.handlerUpdatePassword)
+	userMux.HandleFunc("PUT /api/users/passwords", apiCfg.handlerUpdatePassword)
 
 	userMux.HandleFunc("POST /api/reservations", apiCfg.handlerCreateReservations)
 	userMux.HandleFunc("GET /api/reservations", apiCfg.handlerRetrieveReservations) // Only user's reservations for public
