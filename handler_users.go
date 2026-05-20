@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/salvaharp-llc/movie-reserve/internal/auth"
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
+	"github.com/salvaharp-llc/movie-reserve/internal/email"
 )
 
 type UserSummary struct {
@@ -51,6 +53,11 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	if !email.IsValidEmail(params.Email) {
+		respondWithError(w, http.StatusBadRequest, "invalid email address", nil)
+		return
+	}
+
 	hashedPassword, err := auth.HashPassword(params.Password)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error hashing password", err)
@@ -64,6 +71,22 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating user", err)
 		return
+	}
+
+	verificationCode := auth.MakeVerificationCode()
+
+	_, err = cfg.db.CreateEmailVerification(r.Context(), database.CreateEmailVerificationParams{
+		UserID:    user.ID,
+		Code:      verificationCode,
+		ExpiresAt: time.Now().Add(auth.VerificationCodeExpiresIn),
+	})
+	if err != nil {
+		log.Printf("Failed to create email verification for user %s: %s", user.ID.String(), err.Error())
+	} else {
+		err = cfg.emailSender.SendEmail(params.Email, "Movie Reserve - Verify your email", fmt.Sprintf("Your verification code is: %d", verificationCode))
+		if err != nil {
+			log.Printf("Failed to send verification email to %s: %s", params.Email, err.Error())
+		}
 	}
 
 	respondWithJSON(w, http.StatusCreated, response{

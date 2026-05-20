@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
@@ -29,6 +30,8 @@ const (
 	JwtExpiresIn time.Duration = time.Hour
 	// RefreshTokenExpiresIn -
 	RefreshTokenExpiresIn time.Duration = 60 * 24 * time.Hour
+	// VerificationCodeExpiresIn -
+	VerificationCodeExpiresIn time.Duration = 5 * time.Minute
 	// UserRoles
 	RoleAdmin string = "admin"
 	RoleUser  string = "user"
@@ -107,6 +110,11 @@ func MakeRefreshToken() string {
 func HashRefreshToken(token string) string {
 	hashBytes := sha256.Sum256([]byte(token))
 	return hex.EncodeToString(hashBytes[:])
+}
+
+func MakeVerificationCode() int32 {
+	n, _ := rand.Int(rand.Reader, big.NewInt(100000))
+	return int32(n.Int64())
 }
 
 func IsValidRole(r string) bool {

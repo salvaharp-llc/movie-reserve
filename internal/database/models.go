@@ -11,6 +11,14 @@ import (
 	"github.com/google/uuid"
 )
 
+type EmailVerification struct {
+	ID        uuid.UUID
+	UserID    uuid.UUID
+	Code      int32
+	CreatedAt time.Time
+	ExpiresAt time.Time
+}
+
 type Genre struct {
 	ID        uuid.UUID
 	CreatedAt time.Time
@@ -89,4 +97,5 @@ type User struct {
 	Email          string
 	HashedPassword string
 	Role           string
+	IsActive       bool
 }
