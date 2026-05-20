@@ -13,7 +13,9 @@ func TestIsValidEmail(t *testing.T) {
 		{"invalid-email", false},
 		{"", false},
 		{"a@b.c", false},
-		{"user@domain.co.uk", true},
+		{"user@domain.co.uk", false},
+		{"user@invalid-domain", false},
+		{"user@outlook.com", true},
 	}
 
 	for _, tt := range tests {

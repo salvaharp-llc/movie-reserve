@@ -2,8 +2,10 @@ package email
 
 import (
 	"fmt"
+	"net"
 	"net/smtp"
 	"regexp"
+	"strings"
 )
 
 type EmailSender struct {
@@ -41,5 +43,14 @@ func IsValidEmail(email string) bool {
 	if len(email) < 3 || len(email) > 254 {
 		return false
 	}
-	return emailRegex.MatchString(email)
+	if !emailRegex.MatchString(email) {
+		return false
+	}
+	parts := strings.Split(email, "@")
+	host := parts[1]
+	_, err := net.LookupMX(host)
+	if err != nil {
+		return false
+	}
+	return true
 }
