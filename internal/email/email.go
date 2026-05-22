@@ -31,6 +31,10 @@ func NewEmailSender(host, port, from, password string) (*EmailSender, error) {
 	}, nil
 }
 
+func (es *EmailSender) SendVerificationEmail(to string, code int32) error {
+	return es.SendEmail(to, "Movie Reserve - Verify Your Email", fmt.Sprintf("Your verification code is: %d", code))
+}
+
 func (es *EmailSender) SendEmail(to, subject, body string) error {
 	if !IsValidEmail(to) {
 		return fmt.Errorf("invalid email address: %s", to)

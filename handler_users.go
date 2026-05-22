@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -85,7 +84,7 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 	if err != nil {
 		log.Printf("Failed to create email verification for user %s: %s", user.ID.String(), err.Error())
 	} else {
-		err = cfg.emailSender.SendEmail(params.Email, "Movie Reserve - Verify your email", fmt.Sprintf("Your verification code is: %d", verificationCode))
+		err = cfg.emailSender.SendVerificationEmail(params.Email, verificationCode)
 		if err != nil {
 			log.Printf("Failed to send verification email to %s: %s", params.Email, err.Error())
 		}

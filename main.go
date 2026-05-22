@@ -94,6 +94,7 @@ func main() {
 
 	publicMux.HandleFunc("POST /api/users", apiCfg.handlerCreateUsers)
 	publicMux.HandleFunc("PUT /api/users/verify", apiCfg.handlerVerifyEmail)
+	publicMux.HandleFunc("POST /api/resend-verification", apiCfg.handlerResendVerificationEmail)
 	publicMux.HandleFunc("POST /api/login", apiCfg.handlerLogin)
 	publicMux.HandleFunc("POST /api/refresh", apiCfg.handlerRefresh)
 	publicMux.HandleFunc("POST /api/revoke", apiCfg.handlerRevoke)
