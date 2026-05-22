@@ -34,6 +34,11 @@ func (cfg *apiConfig) handlerLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !user.IsActive {
+		respondWithError(w, http.StatusUnauthorized, "Email not verified", nil)
+		return
+	}
+
 	match, err := auth.CheckPasswordHash(params.Password, user.HashedPassword)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Could not check password", err)
