@@ -118,3 +118,13 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 	_, err := q.db.ExecContext(ctx, updateUserPassword, arg.ID, arg.HashedPassword)
 	return err
 }
+
+const verifyUser = `-- name: VerifyUser :exec
+UPDATE users SET is_active = true, updated_at = NOW()
+WHERE id = $1
+`
+
+func (q *Queries) VerifyUser(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, verifyUser, id)
+	return err
+}

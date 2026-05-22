@@ -13,29 +13,59 @@ import (
 )
 
 const createEmailVerification = `-- name: CreateEmailVerification :one
-INSERT INTO email_verifications (id, user_id, code, created_at, expires_at)
+INSERT INTO email_verifications (id, user_id, user_email, code, created_at, expires_at)
 VALUES (
     gen_random_uuid(),
     $1,
     $2,
+    $3,
     NOW(),
-    $3
+    $4
 )
-RETURNING id, user_id, code, created_at, expires_at
+RETURNING id, user_id, user_email, code, created_at, expires_at
 `
 
 type CreateEmailVerificationParams struct {
 	UserID    uuid.UUID
+	UserEmail string
 	Code      int32
 	ExpiresAt time.Time
 }
 
 func (q *Queries) CreateEmailVerification(ctx context.Context, arg CreateEmailVerificationParams) (EmailVerification, error) {
-	row := q.db.QueryRowContext(ctx, createEmailVerification, arg.UserID, arg.Code, arg.ExpiresAt)
+	row := q.db.QueryRowContext(ctx, createEmailVerification,
+		arg.UserID,
+		arg.UserEmail,
+		arg.Code,
+		arg.ExpiresAt,
+	)
 	var i EmailVerification
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
+		&i.UserEmail,
+		&i.Code,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
+const getEmailVerificationByEmail = `-- name: GetEmailVerificationByEmail :one
+SELECT id, user_id, user_email, code, created_at, expires_at
+FROM email_verifications
+WHERE user_email = $1
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+func (q *Queries) GetEmailVerificationByEmail(ctx context.Context, userEmail string) (EmailVerification, error) {
+	row := q.db.QueryRowContext(ctx, getEmailVerificationByEmail, userEmail)
+	var i EmailVerification
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.UserEmail,
 		&i.Code,
 		&i.CreatedAt,
 		&i.ExpiresAt,

@@ -14,6 +14,7 @@ import (
 type EmailVerification struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
+	UserEmail string
 	Code      int32
 	CreatedAt time.Time
 	ExpiresAt time.Time

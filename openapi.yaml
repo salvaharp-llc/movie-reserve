@@ -29,6 +29,24 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/User'
+  /public/api/users/verify:
+    put:
+      summary: Verify email address
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                verification_code:
+                  type: integer
+      responses:
+        '204':
+          description: Email verified successfully
   /user/api/users/password:
     put:
       summary: Change password

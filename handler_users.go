@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -77,6 +78,7 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 
 	_, err = cfg.db.CreateEmailVerification(r.Context(), database.CreateEmailVerificationParams{
 		UserID:    user.ID,
+		UserEmail: params.Email,
 		Code:      verificationCode,
 		ExpiresAt: time.Now().Add(auth.VerificationCodeExpiresIn),
 	})
@@ -98,6 +100,54 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 			Role:      user.Role,
 		},
 	})
+}
+
+func (cfg *apiConfig) handlerVerifyEmail(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Email string `json:"email"`
+		Code  int32  `json:"code"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error decoding parameters", err)
+		return
+	}
+
+	if strings.TrimSpace(params.Email) == "" {
+		respondWithError(w, http.StatusBadRequest, "email required", nil)
+		return
+	}
+
+	verification, err := cfg.db.GetEmailVerificationByEmail(r.Context(), params.Email)
+	if err == sql.ErrNoRows {
+		respondWithError(w, http.StatusNotFound, "Email verification not found", nil)
+		return
+	}
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error getting email verification", err)
+		return
+	}
+
+	if verification.ExpiresAt.Before(time.Now()) {
+		respondWithError(w, http.StatusBadRequest, "Verification code has expired", nil)
+		return
+	}
+
+	if verification.Code != params.Code {
+		respondWithError(w, http.StatusBadRequest, "Incorrect verification code", nil)
+		return
+	}
+
+	err = cfg.db.VerifyUser(r.Context(), verification.UserID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error verifying user", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (cfg *apiConfig) handlerUpdatePassword(w http.ResponseWriter, r *http.Request) {

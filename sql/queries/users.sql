@@ -25,3 +25,7 @@ WHERE email = $1;
 -- name: UpdateUserPassword :exec
 UPDATE users SET hashed_password = $2, updated_at = NOW()
 WHERE id = $1;
+
+-- name: VerifyUser :exec
+UPDATE users SET is_active = true, updated_at = NOW()
+WHERE id = $1;
