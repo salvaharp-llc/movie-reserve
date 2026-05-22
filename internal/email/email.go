@@ -32,7 +32,7 @@ func NewEmailSender(host, port, from, password string) (*EmailSender, error) {
 }
 
 func (es *EmailSender) SendVerificationEmail(to string, code int32) error {
-	return es.SendEmail(to, "Movie Reserve - Verify Your Email", fmt.Sprintf("Your verification code is: %d", code))
+	return es.SendEmail(to, "Movie Reserve - Verify Your Email", fmt.Sprintf("Your verification code is: %05d", code))
 }
 
 func (es *EmailSender) SendEmail(to, subject, body string) error {
