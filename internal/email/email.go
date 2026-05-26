@@ -31,8 +31,8 @@ func NewEmailSender(host, port, from, password string) (*EmailSender, error) {
 	}, nil
 }
 
-func (es *EmailSender) SendVerificationEmail(to string, code int32) error {
-	return es.SendEmail(to, "Movie Reserve - Verify Your Email", fmt.Sprintf("Your verification code is: %05d", code))
+func (es *EmailSender) SendVerificationEmail(to, code string) error {
+	return es.SendEmail(to, "Movie Reserve - Verify Your Email", fmt.Sprintf("Your verification code is: %s", code))
 }
 
 func (es *EmailSender) SendEmail(to, subject, body string) error {

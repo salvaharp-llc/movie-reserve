@@ -43,11 +43,11 @@ paths:
                   type: string
                   format: email
                 verification_code:
-                  type: integer
+                  type: string
       responses:
         '204':
           description: Email verified successfully
-  /user/api/users/password:
+  /user/api/users/passwords:
     put:
       summary: Change password
       security:
@@ -61,6 +61,26 @@ paths:
       responses:
         '204':
           description: Password changed successfully
+    /user/api/users/emails:
+      put:
+        summary: Change email
+        security:
+          - bearerAuth: []
+        requestBody:
+          required: true
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  password:
+                    type: string
+                  new_email:
+                    type: string
+                    format: email
+        responses:
+          '204':
+            description: Email changed successfully
   /public/api/login:
     post:
       summary: Login and receive tokens

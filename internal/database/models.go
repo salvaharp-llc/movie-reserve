@@ -15,7 +15,7 @@ type EmailVerification struct {
 	ID        uuid.UUID
 	UserID    uuid.UUID
 	UserEmail string
-	Code      int32
+	Code      string
 	CreatedAt time.Time
 	ExpiresAt time.Time
 }

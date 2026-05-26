@@ -28,7 +28,7 @@ RETURNING id, user_id, user_email, code, created_at, expires_at
 type CreateEmailVerificationParams struct {
 	UserID    uuid.UUID
 	UserEmail string
-	Code      int32
+	Code      string
 	ExpiresAt time.Time
 }
 

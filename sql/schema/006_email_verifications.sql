@@ -6,7 +6,7 @@ CREATE TABLE email_verifications(
     id UUID PRIMARY KEY,
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     user_email TEXT NOT NULL,
-    code INT NOT NULL,
+    code VARCHAR(5) NOT NULL,
     created_at TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL
 );

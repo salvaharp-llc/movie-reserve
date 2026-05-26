@@ -104,7 +104,7 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 func (cfg *apiConfig) handlerVerifyEmail(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
 		Email string `json:"email"`
-		Code  int32  `json:"code"`
+		Code  string `json:"code"`
 	}
 
 	decoder := json.NewDecoder(r.Body)

@@ -112,9 +112,9 @@ func HashRefreshToken(token string) string {
 	return hex.EncodeToString(hashBytes[:])
 }
 
-func MakeVerificationCode() int32 {
+func MakeVerificationCode() string {
 	n, _ := rand.Int(rand.Reader, big.NewInt(100000))
-	return int32(n.Int64())
+	return fmt.Sprintf("%05d", n.Int64())
 }
 
 func IsValidRole(r string) bool {
