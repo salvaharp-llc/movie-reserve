@@ -104,6 +104,31 @@ func (q *Queries) MakeAdmin(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const unverifyUser = `-- name: UnverifyUser :exec
+UPDATE users SET is_active = false, updated_at = NOW()
+WHERE id = $1
+`
+
+func (q *Queries) UnverifyUser(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.ExecContext(ctx, unverifyUser, id)
+	return err
+}
+
+const updateUserEmail = `-- name: UpdateUserEmail :exec
+UPDATE users SET email = $2, updated_at = NOW()
+WHERE id = $1
+`
+
+type UpdateUserEmailParams struct {
+	ID    uuid.UUID
+	Email string
+}
+
+func (q *Queries) UpdateUserEmail(ctx context.Context, arg UpdateUserEmailParams) error {
+	_, err := q.db.ExecContext(ctx, updateUserEmail, arg.ID, arg.Email)
+	return err
+}
+
 const updateUserPassword = `-- name: UpdateUserPassword :exec
 UPDATE users SET hashed_password = $2, updated_at = NOW()
 WHERE id = $1
@@ -121,10 +146,10 @@ func (q *Queries) UpdateUserPassword(ctx context.Context, arg UpdateUserPassword
 
 const verifyUser = `-- name: VerifyUser :exec
 UPDATE users SET is_active = true, updated_at = NOW()
-WHERE id = $1
+WHERE email = $1
 `
 
-func (q *Queries) VerifyUser(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.ExecContext(ctx, verifyUser, id)
+func (q *Queries) VerifyUser(ctx context.Context, email string) error {
+	_, err := q.db.ExecContext(ctx, verifyUser, email)
 	return err
 }

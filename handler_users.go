@@ -120,6 +120,21 @@ func (cfg *apiConfig) handlerVerifyEmail(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	user, err := cfg.db.GetUserByEmail(r.Context(), params.Email)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusBadRequest, "No user found with that email", nil)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "Database error", err)
+		return
+	}
+
+	if user.IsActive {
+		respondWithError(w, http.StatusBadRequest, "Email is already verified", nil)
+		return
+	}
+
 	verification, err := cfg.db.GetEmailVerificationByEmail(r.Context(), params.Email)
 	if err == sql.ErrNoRows {
 		respondWithError(w, http.StatusNotFound, "Email verification not found", nil)
@@ -140,7 +155,7 @@ func (cfg *apiConfig) handlerVerifyEmail(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	err = cfg.db.VerifyUser(r.Context(), verification.UserID)
+	err = cfg.db.VerifyUser(r.Context(), verification.UserEmail)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error verifying user", err)
 		return
@@ -216,8 +231,112 @@ func (cfg *apiConfig) handlerUpdatePassword(w http.ResponseWriter, r *http.Reque
 
 	err = cfg.db.RevokeRefreshTokens(r.Context(), userID)
 	if err != nil {
-		log.Printf("Couldn't revoke refresh tokens after password update for user %s: %s", userID.String(), err.Error())
+		respondWithError(w, http.StatusInternalServerError, "Error revoking refresh tokens after password update", err)
+		return
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (cfg *apiConfig) handlerUpdateEmail(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Password string `json:"password"`
+		NewEmail string `json:"new_email"`
+	}
+	type response struct {
+		User
+	}
+
+	userID, err := getUserID(r.Context())
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not find user id", err)
+		return
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err = decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error decoding parameters", err)
+		return
+	}
+
+	if strings.TrimSpace(params.Password) == "" {
+		respondWithError(w, http.StatusBadRequest, "password required", nil)
+		return
+	}
+	if strings.TrimSpace(params.NewEmail) == "" {
+		respondWithError(w, http.StatusBadRequest, "new email required", nil)
+		return
+	}
+
+	if !email.IsValidEmail(params.NewEmail) {
+		respondWithError(w, http.StatusBadRequest, "invalid email address", nil)
+		return
+	}
+
+	user, err := cfg.db.GetUserByID(r.Context(), userID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error geting user", err)
+		return
+	}
+
+	match, err := auth.CheckPasswordHash(params.Password, user.HashedPassword)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not check password", err)
+		return
+	}
+	if !match {
+		respondWithError(w, http.StatusUnauthorized, "Incorrect password", err)
+		return
+	}
+
+	err = cfg.db.UpdateUserEmail(r.Context(), database.UpdateUserEmailParams{
+		ID:    userID,
+		Email: params.NewEmail,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error updating email", err)
+		return
+	}
+
+	err = cfg.db.UnverifyUser(r.Context(), userID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error unverifying user after email update", err)
+		return
+	}
+
+	verificationCode := auth.MakeVerificationCode()
+
+	_, err = cfg.db.CreateEmailVerification(r.Context(), database.CreateEmailVerificationParams{
+		UserID:    userID,
+		UserEmail: params.NewEmail,
+		Code:      verificationCode,
+		ExpiresAt: time.Now().Add(auth.VerificationCodeExpiresIn),
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error creating email verification", err)
+		return
+	} else {
+		err = cfg.emailSender.SendVerificationEmail(params.NewEmail, verificationCode)
+		if err != nil {
+			log.Printf("Failed to send verification email to %s after email update: %s", params.NewEmail, err.Error())
+		}
+	}
+
+	err = cfg.db.RevokeRefreshTokens(r.Context(), userID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error revoking refresh tokens after email update", err)
+		return
+	}
+
+	respondWithJSON(w, http.StatusOK, response{
+		User: User{
+			ID:        user.ID,
+			CreatedAt: user.CreatedAt,
+			UpdatedAt: user.UpdatedAt,
+			Email:     user.Email,
+			Role:      user.Role,
+		},
+	})
 }

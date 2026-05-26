@@ -116,6 +116,7 @@ func main() {
 
 	// Routes requiring user login
 	userMux.HandleFunc("PUT /api/users/passwords", apiCfg.handlerUpdatePassword)
+	userMux.HandleFunc("PUT /api/users/emails", apiCfg.handlerUpdateEmail)
 
 	userMux.HandleFunc("POST /api/reservations", apiCfg.handlerCreateReservations)
 	userMux.HandleFunc("GET /api/reservations", apiCfg.handlerRetrieveReservations) // Only user's reservations for public

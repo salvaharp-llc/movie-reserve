@@ -39,6 +39,11 @@ func (cfg *apiConfig) handlerResendVerificationEmail(w http.ResponseWriter, r *h
 		return
 	}
 
+	if user.IsActive {
+		respondWithError(w, http.StatusBadRequest, "Email is already verified", nil)
+		return
+	}
+
 	verificationCode := auth.MakeVerificationCode()
 	_, err = cfg.db.CreateEmailVerification(r.Context(), database.CreateEmailVerificationParams{
 		UserID:    user.ID,

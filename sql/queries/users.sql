@@ -28,4 +28,12 @@ WHERE id = $1;
 
 -- name: VerifyUser :exec
 UPDATE users SET is_active = true, updated_at = NOW()
+WHERE email = $1;
+
+-- name: UpdateUserEmail :exec
+UPDATE users SET email = $2, updated_at = NOW()
+WHERE id = $1;
+
+-- name: UnverifyUser :exec
+UPDATE users SET is_active = false, updated_at = NOW()
 WHERE id = $1;
