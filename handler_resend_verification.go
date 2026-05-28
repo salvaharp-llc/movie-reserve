@@ -32,15 +32,15 @@ func (cfg *apiConfig) handlerResendVerificationEmail(w http.ResponseWriter, r *h
 	user, err := cfg.db.GetUserByEmail(r.Context(), params.Email)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			respondWithJSON(w, http.StatusOK, "If an account with that email exists, a verification email has been sent")
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
-		respondWithError(w, http.StatusInternalServerError, "Database error", err)
+		respondWithError(w, http.StatusInternalServerError, "error retrieving user", err)
 		return
 	}
 
 	if user.IsActive {
-		respondWithJSON(w, http.StatusOK, "If an account with that email exists, a verification email has been sent")
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
@@ -62,5 +62,5 @@ func (cfg *apiConfig) handlerResendVerificationEmail(w http.ResponseWriter, r *h
 		return
 	}
 
-	respondWithJSON(w, http.StatusOK, "If an account with that email exists, a verification email has been sent")
+	w.WriteHeader(http.StatusNoContent)
 }
