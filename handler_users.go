@@ -123,7 +123,7 @@ func (cfg *apiConfig) handlerVerifyEmail(w http.ResponseWriter, r *http.Request)
 	user, err := cfg.db.GetUserByEmail(r.Context(), params.Email)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusBadRequest, "No user found with that email", nil)
+			respondWithError(w, http.StatusBadRequest, "Wrong email or verification code", nil)
 			return
 		}
 		respondWithError(w, http.StatusInternalServerError, "Database error", err)
@@ -131,13 +131,14 @@ func (cfg *apiConfig) handlerVerifyEmail(w http.ResponseWriter, r *http.Request)
 	}
 
 	if user.IsActive {
-		respondWithError(w, http.StatusBadRequest, "Email is already verified", nil)
+		respondWithError(w, http.StatusBadRequest, "Wrong email or verification code", nil)
 		return
 	}
 
 	verification, err := cfg.db.GetEmailVerificationByEmail(r.Context(), params.Email)
 	if err == sql.ErrNoRows {
-		respondWithError(w, http.StatusNotFound, "Email verification not found", nil)
+		respondWithError(w, http.StatusBadRequest, "Wrong email or verification code", nil)
+
 		return
 	}
 	if err != nil {
@@ -151,7 +152,7 @@ func (cfg *apiConfig) handlerVerifyEmail(w http.ResponseWriter, r *http.Request)
 	}
 
 	if verification.Code != params.Code {
-		respondWithError(w, http.StatusBadRequest, "Incorrect verification code", nil)
+		respondWithError(w, http.StatusBadRequest, "Wrong email or verification code", nil)
 		return
 	}
 
