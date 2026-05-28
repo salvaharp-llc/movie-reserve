@@ -22,4 +22,4 @@ RETURNING refresh_tokens.user_id, users.role;
 -- name: RevokeRefreshTokens :exec
 UPDATE refresh_tokens
 SET updated_at = NOW(), revoked_at = NOW()
-WHERE user_id = $1;
+WHERE user_id = $1 AND revoked_at IS NULL;

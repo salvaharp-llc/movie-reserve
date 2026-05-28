@@ -341,3 +341,73 @@ func (cfg *apiConfig) handlerUpdateEmail(w http.ResponseWriter, r *http.Request)
 		},
 	})
 }
+
+func (cfg *apiConfig) handlerPasswordReset(w http.ResponseWriter, r *http.Request) {
+	type parameters struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	params := parameters{}
+	err := decoder.Decode(&params)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error decoding parameters", err)
+		return
+	}
+
+	if strings.TrimSpace(params.Token) == "" {
+		respondWithError(w, http.StatusBadRequest, "token required", nil)
+		return
+	}
+	if strings.TrimSpace(params.NewPassword) == "" {
+		respondWithError(w, http.StatusBadRequest, "new password required", nil)
+		return
+	}
+
+	hashedToken := auth.HashPwResetToken(params.Token)
+
+	resetTokenRecord, err := cfg.db.GetPasswordResetToken(r.Context(), hashedToken)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusBadRequest, "Wrong token or token has expired", nil)
+			return
+		}
+		respondWithError(w, http.StatusInternalServerError, "error getting password reset token", err)
+		return
+	}
+
+	if resetTokenRecord.ExpiresAt.Before(time.Now()) || resetTokenRecord.RevokedAt.Valid {
+		respondWithError(w, http.StatusBadRequest, "Wrong token or token has expired", nil)
+		return
+	}
+
+	err = cfg.db.RevokePasswordResetToken(r.Context(), hashedToken)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "error revoking password reset token", err)
+		return
+	}
+
+	newHashedPassword, err := auth.HashPassword(params.NewPassword)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Could not hash new password", err)
+		return
+	}
+
+	err = cfg.db.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
+		ID:             resetTokenRecord.UserID,
+		HashedPassword: newHashedPassword,
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error updating password", err)
+		return
+	}
+
+	err = cfg.db.RevokeRefreshTokens(r.Context(), resetTokenRecord.UserID)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Error revoking refresh tokens after password reset", err)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}

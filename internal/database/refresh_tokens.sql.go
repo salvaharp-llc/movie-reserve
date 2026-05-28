@@ -70,7 +70,7 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, token string) (RevokeR
 const revokeRefreshTokens = `-- name: RevokeRefreshTokens :exec
 UPDATE refresh_tokens
 SET updated_at = NOW(), revoked_at = NOW()
-WHERE user_id = $1
+WHERE user_id = $1 AND revoked_at IS NULL
 `
 
 func (q *Queries) RevokeRefreshTokens(ctx context.Context, userID uuid.UUID) error {

@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -32,6 +33,8 @@ const (
 	RefreshTokenExpiresIn time.Duration = 60 * 24 * time.Hour
 	// VerificationCodeExpiresIn -
 	VerificationCodeExpiresIn time.Duration = 5 * time.Minute
+	// PwResetTokenExpiresIn -
+	PwResetTokenExpiresIn time.Duration = 10 * time.Minute
 	// UserRoles
 	RoleAdmin string = "admin"
 	RoleUser  string = "user"
@@ -115,6 +118,17 @@ func HashRefreshToken(token string) string {
 func MakeVerificationCode() string {
 	n, _ := rand.Int(rand.Reader, big.NewInt(100000))
 	return fmt.Sprintf("%05d", n.Int64())
+}
+
+func MakePwResetToken() string {
+	data := make([]byte, 32)
+	rand.Read(data)
+	return base64.URLEncoding.EncodeToString(data)
+}
+
+func HashPwResetToken(token string) string {
+	hashBytes := sha256.Sum256([]byte(token))
+	return base64.URLEncoding.EncodeToString(hashBytes[:])
 }
 
 func IsValidRole(r string) bool {
