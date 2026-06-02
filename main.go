@@ -26,7 +26,7 @@ type Config struct {
 }
 
 type apiConfig struct {
-	db          *database.Queries
+	db          *database.DbStore
 	emailSender *email.EmailSender
 	jwtSecret   string
 	platform    string
@@ -57,7 +57,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not open database: %v", err)
 	}
-	dbQueries := database.New(db)
+	dbStore := database.NewStore(db)
 
 	emailSender, err := email.NewEmailSender(cfg.MailHost, cfg.MailPort, cfg.MailUsername, cfg.MailPassword)
 	if err != nil {
@@ -65,7 +65,7 @@ func main() {
 	}
 
 	apiCfg := apiConfig{
-		db:          dbQueries,
+		db:          dbStore,
 		emailSender: emailSender,
 		jwtSecret:   cfg.JWTSecret,
 		platform:    cfg.Platform,
