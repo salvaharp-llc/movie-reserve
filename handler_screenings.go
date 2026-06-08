@@ -66,11 +66,20 @@ func (cfg *apiConfig) handlerCreateScreenings(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	screening, err := cfg.db.CreateScreening(r.Context(), database.CreateScreeningParams{
-		MovieID:   MovieID,
-		RoomID:    RoomID,
-		StartTime: params.StartTime,
-		EndTime:   params.EndTime,
+	var screeningDetail database.GetScreeningDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		screening, err := q.CreateScreening(r.Context(), database.CreateScreeningParams{
+			MovieID:   MovieID,
+			RoomID:    RoomID,
+			StartTime: params.StartTime,
+			EndTime:   params.EndTime,
+		})
+		if err != nil {
+			return err
+		}
+
+		screeningDetail, err = q.GetScreeningDetailByID(r.Context(), screening.ID)
+		return err
 	})
 	if err != nil {
 		if strings.Contains(err.Error(), "valid_time_range") {
@@ -82,24 +91,11 @@ func (cfg *apiConfig) handlerCreateScreenings(w http.ResponseWriter, r *http.Req
 			return
 		}
 		respondWithError(w, http.StatusInternalServerError, "Error creating screening", err)
-		return
-	}
-
-	screeningDetail, err := cfg.db.GetScreeningDetailByID(r.Context(), screening.ID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusNotFound, "Screening not found", err)
-			return
-		}
-		respondWithError(w, http.StatusInternalServerError, "Couldn't get screening", err)
-		return
 	}
 
 	responseScreening := aggregateScreeningDetail(screeningDetail)
 
-	respondWithJSON(w, http.StatusOK, response{
-		ScreeningDetail: responseScreening,
-	})
+	respondWithJSON(w, http.StatusOK, response{responseScreening})
 }
 
 func (cfg *apiConfig) handlerGetScreenings(w http.ResponseWriter, r *http.Request) {
@@ -126,9 +122,7 @@ func (cfg *apiConfig) handlerGetScreenings(w http.ResponseWriter, r *http.Reques
 
 	responseScreening := aggregateScreeningDetail(screening)
 
-	respondWithJSON(w, http.StatusOK, response{
-		ScreeningDetail: responseScreening,
-	})
+	respondWithJSON(w, http.StatusOK, response{responseScreening})
 }
 
 func (cfg *apiConfig) handlerRetrieveScreenings(w http.ResponseWriter, r *http.Request) {
@@ -255,12 +249,21 @@ func (cfg *apiConfig) handlerUpdateScreenings(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	screening, err := cfg.db.UpdateScreening(r.Context(), database.UpdateScreeningParams{
-		ID:        screeningID,
-		MovieID:   movieID,
-		RoomID:    roomID,
-		StartTime: params.StartTime,
-		EndTime:   params.EndTime,
+	var screeningDetail database.GetScreeningDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		screening, err := q.UpdateScreening(r.Context(), database.UpdateScreeningParams{
+			ID:        screeningID,
+			MovieID:   movieID,
+			RoomID:    roomID,
+			StartTime: params.StartTime,
+			EndTime:   params.EndTime,
+		})
+		if err != nil {
+			return err
+		}
+
+		screeningDetail, err = q.GetScreeningDetailByID(r.Context(), screening.ID)
+		return err
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -271,21 +274,9 @@ func (cfg *apiConfig) handlerUpdateScreenings(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	screeningDetail, err := cfg.db.GetScreeningDetailByID(r.Context(), screening.ID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusNotFound, "Screening not found", err)
-			return
-		}
-		respondWithError(w, http.StatusInternalServerError, "Couldn't get screening", err)
-		return
-	}
-
 	responseScreening := aggregateScreeningDetail(screeningDetail)
 
-	respondWithJSON(w, http.StatusOK, response{
-		ScreeningDetail: responseScreening,
-	})
+	respondWithJSON(w, http.StatusOK, response{responseScreening})
 }
 
 func (cfg *apiConfig) handlerDeleteScreenings(w http.ResponseWriter, r *http.Request) {

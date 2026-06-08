@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -10,6 +11,8 @@ import (
 	"github.com/salvaharp-llc/movie-reserve/internal/auth"
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
 )
+
+const verificationResponse = "If the address is valid, you will receive an email with the verification code."
 
 func (cfg *apiConfig) handlerResendVerificationEmail(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
@@ -32,7 +35,7 @@ func (cfg *apiConfig) handlerResendVerificationEmail(w http.ResponseWriter, r *h
 	user, err := cfg.db.GetUserByEmail(r.Context(), params.Email)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			w.WriteHeader(http.StatusNoContent)
+			respondWithText(w, http.StatusOK, verificationResponse)
 			return
 		}
 		respondWithError(w, http.StatusInternalServerError, "error retrieving user", err)
@@ -40,7 +43,7 @@ func (cfg *apiConfig) handlerResendVerificationEmail(w http.ResponseWriter, r *h
 	}
 
 	if user.IsActive {
-		w.WriteHeader(http.StatusNoContent)
+		respondWithText(w, http.StatusOK, verificationResponse)
 		return
 	}
 
@@ -58,9 +61,8 @@ func (cfg *apiConfig) handlerResendVerificationEmail(w http.ResponseWriter, r *h
 
 	err = cfg.emailSender.SendVerificationEmail(params.Email, verificationCode)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Failed to send verification email", err)
-		return
+		log.Printf("Error sending verification email to %s: %v", params.Email, err)
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	respondWithText(w, http.StatusOK, verificationResponse)
 }

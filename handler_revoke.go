@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"net/http"
 
 	"github.com/salvaharp-llc/movie-reserve/internal/auth"
@@ -13,8 +14,12 @@ func (cfg *apiConfig) handlerRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = cfg.db.RevokeRefreshToken(r.Context(), auth.HashRefreshToken(refreshToken))
+	err = cfg.db.RevokeRefreshToken(r.Context(), auth.HashRefreshToken(refreshToken))
 	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusUnauthorized, "Invalid refresh token", err)
+			return
+		}
 		respondWithError(w, http.StatusInternalServerError, "Could not revoke the refresh token", err)
 		return
 	}

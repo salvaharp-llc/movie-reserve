@@ -149,7 +149,6 @@ func main() {
 	adminMux.HandleFunc("DELETE /api/seats/{seatID}", apiCfg.handlerDeleteSeats)
 
 	adminMux.HandleFunc("GET /api/reservations/all", apiCfg.handlerRetrieveReservationsAdmin) // Non-limited reservations for admin
-	adminMux.HandleFunc("PUT /api/reservations/{reservationID}", apiCfg.handlerUpdateReservations)
 
 	// Dev/test routes
 	mux.HandleFunc("POST /dev/reset", apiCfg.handlerReset)

@@ -68,14 +68,6 @@ ORDER BY r.created_at DESC
 LIMIT sqlc.arg('limit')
 OFFSET sqlc.arg('offset');
 
--- name: UpdateReservation :one
-UPDATE reservations
-SET updated_at = NOW(), user_id = $2, screening_id = $3, room_id = s.room_id, seat_id = $4
-FROM screenings s
-WHERE reservations.id = $1
-  AND s.id = $3
-RETURNING reservations.*;
-
 -- name: DeleteReservation :exec
 DELETE FROM reservations
 WHERE id = $1;

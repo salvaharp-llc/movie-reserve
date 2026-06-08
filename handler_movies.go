@@ -118,38 +118,38 @@ func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request
 		relDate.Valid = true
 	}
 
-	movie, err := cfg.db.CreateMovie(r.Context(), database.CreateMovieParams{
-		Title:          params.Title,
-		Slug:           params.Slug,
-		Description:    desc,
-		RuntimeMinutes: runtime,
-		ReleaseDate:    relDate,
+	var movieDetail database.GetMovieDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		movie, err := q.CreateMovie(r.Context(), database.CreateMovieParams{
+			Title:          params.Title,
+			Slug:           params.Slug,
+			Description:    desc,
+			RuntimeMinutes: runtime,
+			ReleaseDate:    relDate,
+		})
+		if err != nil {
+			return err
+		}
+
+		err = q.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
+			MovieID:  movie.ID,
+			GenreIds: genreUUIDs,
+		})
+		if err != nil {
+			return err
+		}
+
+		movieDetail, err = q.GetMovieDetailByID(r.Context(), movie.ID)
+		return err
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error creating movie", err)
-		return
-	}
-
-	err = cfg.db.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
-		MovieID:  movie.ID,
-		GenreIds: genreUUIDs,
-	})
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error assigning genres to movie", err)
-		return
-	}
-
-	movieDetail, err := cfg.db.GetMovieDetailByID(r.Context(), movie.ID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch created movie", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create movie", err)
 		return
 	}
 
 	movieResponse := aggregateMovieDetail(movieDetail)
 
-	respondWithJSON(w, http.StatusCreated, response{
-		MovieDetail: movieResponse,
-	})
+	respondWithJSON(w, http.StatusCreated, response{movieResponse})
 }
 
 func (cfg *apiConfig) handlerGetMovies(w http.ResponseWriter, r *http.Request) {
@@ -176,9 +176,7 @@ func (cfg *apiConfig) handlerGetMovies(w http.ResponseWriter, r *http.Request) {
 
 	movieResponse := aggregateMovieDetail(movie)
 
-	respondWithJSON(w, http.StatusOK, response{
-		MovieDetail: movieResponse,
-	})
+	respondWithJSON(w, http.StatusOK, response{movieResponse})
 }
 
 func (cfg *apiConfig) handlerRetrieveMovies(w http.ResponseWriter, r *http.Request) {
@@ -392,13 +390,35 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		relDate.Valid = true
 	}
 
-	_, err = cfg.db.UpdateMovie(r.Context(), database.UpdateMovieParams{
-		ID:             movieID,
-		Title:          params.Title,
-		Slug:           params.Slug,
-		Description:    desc,
-		RuntimeMinutes: runtime,
-		ReleaseDate:    relDate,
+	var movieDetail database.GetMovieDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		_, err = q.UpdateMovie(r.Context(), database.UpdateMovieParams{
+			ID:             movieID,
+			Title:          params.Title,
+			Slug:           params.Slug,
+			Description:    desc,
+			RuntimeMinutes: runtime,
+			ReleaseDate:    relDate,
+		})
+		if err != nil {
+			return err
+		}
+
+		err = q.DeleteMovieGenres(r.Context(), movieID)
+		if err != nil {
+			return err
+		}
+
+		err = q.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
+			MovieID:  movieID,
+			GenreIds: genreUUIDs,
+		})
+		if err != nil {
+			return err
+		}
+
+		movieDetail, err = q.GetMovieDetailByID(r.Context(), movieID)
+		return err
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -406,27 +426,6 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 			return
 		}
 		respondWithError(w, http.StatusInternalServerError, "Error updating movie", err)
-		return
-	}
-
-	err = cfg.db.DeleteMovieGenres(r.Context(), movieID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error deleting old genres", err)
-		return
-	}
-
-	err = cfg.db.AssignGenresToMovie(r.Context(), database.AssignGenresToMovieParams{
-		MovieID:  movieID,
-		GenreIds: genreUUIDs,
-	})
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error assigning genres to movie", err)
-		return
-	}
-
-	movieDetail, err := cfg.db.GetMovieDetailByID(r.Context(), movieID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch updated movie", err)
 		return
 	}
 

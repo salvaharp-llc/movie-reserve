@@ -3,6 +3,7 @@ package main
 import (
 	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -11,6 +12,8 @@ import (
 	"github.com/salvaharp-llc/movie-reserve/internal/database"
 	"github.com/salvaharp-llc/movie-reserve/internal/email"
 )
+
+const pwResetResponse = "If the address is valid, you will receive an email with the reset link."
 
 func (cfg *apiConfig) handlerRequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	type parameters struct {
@@ -38,7 +41,7 @@ func (cfg *apiConfig) handlerRequestPasswordReset(w http.ResponseWriter, r *http
 	user, err := cfg.db.GetUserByEmail(r.Context(), params.Email)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			w.WriteHeader(http.StatusNoContent)
+			respondWithText(w, http.StatusOK, pwResetResponse)
 			return
 		}
 		respondWithError(w, http.StatusInternalServerError, "error getting user", err)
@@ -46,7 +49,7 @@ func (cfg *apiConfig) handlerRequestPasswordReset(w http.ResponseWriter, r *http
 	}
 
 	if !user.IsActive {
-		w.WriteHeader(http.StatusNoContent)
+		respondWithText(w, http.StatusOK, pwResetResponse)
 		return
 	}
 
@@ -70,9 +73,8 @@ func (cfg *apiConfig) handlerRequestPasswordReset(w http.ResponseWriter, r *http
 			"http://localhost:"+cfg.port+"/app/users/password-reset?token="+resetToken,
 	)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "error sending password reset email", err)
-		return
+		log.Printf("error sending password reset email: %v", err)
 	}
 
-	w.WriteHeader(http.StatusNoContent)
+	respondWithText(w, http.StatusOK, pwResetResponse)
 }

@@ -9,15 +9,16 @@ VALUES (
 )
 RETURNING *;
 
--- name: RevokeRefreshToken :one
+-- name: GetRefreshToken :one
+SELECT rt.*, u.role
+FROM refresh_tokens rt
+JOIN users u ON rt.user_id = u.id
+WHERE rt.token = $1;
+
+-- name: RevokeRefreshToken :exec
 UPDATE refresh_tokens
 SET updated_at = NOW(), revoked_at = NOW()
-FROM users
-WHERE refresh_tokens.token = $1
-  AND refresh_tokens.revoked_at IS NULL
-  AND refresh_tokens.expires_at > NOW()
-  AND users.id = refresh_tokens.user_id
-RETURNING refresh_tokens.user_id, users.role;
+WHERE token = $1;
 
 -- name: RevokeRefreshTokens :exec
 UPDATE refresh_tokens

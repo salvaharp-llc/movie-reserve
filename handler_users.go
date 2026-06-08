@@ -64,34 +64,37 @@ func (cfg *apiConfig) handlerCreateUsers(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	user, err := cfg.db.CreateUser(r.Context(), database.CreateUserParams{
-		Email:          params.Email,
-		HashedPassword: hashedPassword,
+	verificationCode := auth.MakeVerificationCode()
+
+	var user database.User
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		user, err := q.CreateUser(r.Context(), database.CreateUserParams{
+			Email:          params.Email,
+			HashedPassword: hashedPassword,
+		})
+		if err != nil {
+			return err
+		}
+		_, err = q.CreateEmailVerification(r.Context(), database.CreateEmailVerificationParams{
+			UserID:    user.ID,
+			UserEmail: params.Email,
+			Code:      verificationCode,
+			ExpiresAt: time.Now().Add(auth.VerificationCodeExpiresIn),
+		})
+		return err
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating user", err)
 		return
 	}
 
-	verificationCode := auth.MakeVerificationCode()
-
-	_, err = cfg.db.CreateEmailVerification(r.Context(), database.CreateEmailVerificationParams{
-		UserID:    user.ID,
-		UserEmail: params.Email,
-		Code:      verificationCode,
-		ExpiresAt: time.Now().Add(auth.VerificationCodeExpiresIn),
-	})
+	err = cfg.emailSender.SendVerificationEmail(user.Email, verificationCode)
 	if err != nil {
-		log.Printf("Failed to create email verification for user %s: %s", user.ID.String(), err.Error())
-	} else {
-		err = cfg.emailSender.SendVerificationEmail(params.Email, verificationCode)
-		if err != nil {
-			log.Printf("Failed to send verification email to %s: %s", params.Email, err.Error())
-		}
+		log.Printf("Failed to send verification email to %s: %s", user.Email, err.Error())
 	}
 
 	respondWithJSON(w, http.StatusCreated, response{
-		User: User{
+		User{
 			ID:        user.ID,
 			CreatedAt: user.CreatedAt,
 			UpdatedAt: user.UpdatedAt,
@@ -221,18 +224,20 @@ func (cfg *apiConfig) handlerUpdatePassword(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	err = cfg.db.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
-		ID:             userID,
-		HashedPassword: newHashedPassword,
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		err = q.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
+			ID:             userID,
+			HashedPassword: newHashedPassword,
+		})
+		if err != nil {
+			return err
+		}
+
+		err = q.RevokeRefreshTokens(r.Context(), userID)
+		return err
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error updating password", err)
-		return
-	}
-
-	err = cfg.db.RevokeRefreshTokens(r.Context(), userID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error revoking refresh tokens after password update", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't update password", err)
 		return
 	}
 
@@ -243,9 +248,6 @@ func (cfg *apiConfig) handlerUpdateEmail(w http.ResponseWriter, r *http.Request)
 	type parameters struct {
 		Password string `json:"password"`
 		NewEmail string `json:"new_email"`
-	}
-	type response struct {
-		User
 	}
 
 	userID, err := getUserID(r.Context())
@@ -292,54 +294,45 @@ func (cfg *apiConfig) handlerUpdateEmail(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	err = cfg.db.UpdateUserEmail(r.Context(), database.UpdateUserEmailParams{
-		ID:    userID,
-		Email: params.NewEmail,
+	verificationCode := auth.MakeVerificationCode()
+
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		err = q.UpdateUserEmail(r.Context(), database.UpdateUserEmailParams{
+			ID:    userID,
+			Email: params.NewEmail,
+		})
+		if err != nil {
+			return err
+		}
+
+		err = q.UnverifyUser(r.Context(), userID)
+		if err != nil {
+			return err
+		}
+
+		_, err = q.CreateEmailVerification(r.Context(), database.CreateEmailVerificationParams{
+			UserID:    userID,
+			UserEmail: params.NewEmail,
+			Code:      verificationCode,
+			ExpiresAt: time.Now().Add(auth.VerificationCodeExpiresIn),
+		})
+		if err != nil {
+			return err
+		}
+
+		err = q.RevokeRefreshTokens(r.Context(), userID)
+		return err
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error updating email", err)
 		return
 	}
-
-	err = cfg.db.UnverifyUser(r.Context(), userID)
+	err = cfg.emailSender.SendVerificationEmail(params.NewEmail, verificationCode)
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error unverifying user after email update", err)
-		return
+		log.Printf("Failed to send verification email to %s after email update: %s", params.NewEmail, err.Error())
 	}
 
-	verificationCode := auth.MakeVerificationCode()
-
-	_, err = cfg.db.CreateEmailVerification(r.Context(), database.CreateEmailVerificationParams{
-		UserID:    userID,
-		UserEmail: params.NewEmail,
-		Code:      verificationCode,
-		ExpiresAt: time.Now().Add(auth.VerificationCodeExpiresIn),
-	})
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error creating email verification", err)
-		return
-	} else {
-		err = cfg.emailSender.SendVerificationEmail(params.NewEmail, verificationCode)
-		if err != nil {
-			log.Printf("Failed to send verification email to %s after email update: %s", params.NewEmail, err.Error())
-		}
-	}
-
-	err = cfg.db.RevokeRefreshTokens(r.Context(), userID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error revoking refresh tokens after email update", err)
-		return
-	}
-
-	respondWithJSON(w, http.StatusOK, response{
-		User: User{
-			ID:        user.ID,
-			CreatedAt: user.CreatedAt,
-			UpdatedAt: user.UpdatedAt,
-			Email:     user.Email,
-			Role:      user.Role,
-		},
-	})
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (cfg *apiConfig) handlerPasswordReset(w http.ResponseWriter, r *http.Request) {
@@ -370,7 +363,7 @@ func (cfg *apiConfig) handlerPasswordReset(w http.ResponseWriter, r *http.Reques
 	resetTokenRecord, err := cfg.db.GetPasswordResetToken(r.Context(), hashedToken)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusBadRequest, "Wrong token or token has expired", nil)
+			respondWithError(w, http.StatusBadRequest, "Invalid token", nil)
 			return
 		}
 		respondWithError(w, http.StatusInternalServerError, "error getting password reset token", err)
@@ -394,18 +387,20 @@ func (cfg *apiConfig) handlerPasswordReset(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	err = cfg.db.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
-		ID:             resetTokenRecord.UserID,
-		HashedPassword: newHashedPassword,
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		err = q.UpdateUserPassword(r.Context(), database.UpdateUserPasswordParams{
+			ID:             resetTokenRecord.UserID,
+			HashedPassword: newHashedPassword,
+		})
+		if err != nil {
+			return err
+		}
+
+		err = q.RevokeRefreshTokens(r.Context(), resetTokenRecord.UserID)
+		return err
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error updating password", err)
-		return
-	}
-
-	err = cfg.db.RevokeRefreshTokens(r.Context(), resetTokenRecord.UserID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error revoking refresh tokens after password reset", err)
 		return
 	}
 

@@ -45,27 +45,24 @@ func (cfg *apiConfig) handlerCreateRooms(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	room, err := cfg.db.CreateRoom(r.Context(), params.Name)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error creating room", err)
-		return
-	}
-
-	roomDetail, err := cfg.db.GetRoomDetailByID(r.Context(), room.ID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusNotFound, "Room not found", err)
-			return
+	var roomDetail database.GetRoomDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		room, err := q.CreateRoom(r.Context(), params.Name)
+		if err != nil {
+			return err
 		}
-		respondWithError(w, http.StatusInternalServerError, "Couldn't get room", err)
+
+		roomDetail, err = q.GetRoomDetailByID(r.Context(), room.ID)
+		return err
+	})
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create room", err)
 		return
 	}
 
 	responseRoom := aggregateRoomDetail(roomDetail)
 
-	respondWithJSON(w, http.StatusOK, response{
-		RoomDetail: responseRoom,
-	})
+	respondWithJSON(w, http.StatusOK, response{responseRoom})
 }
 
 func (cfg *apiConfig) handlerGetRooms(w http.ResponseWriter, r *http.Request) {
@@ -92,9 +89,7 @@ func (cfg *apiConfig) handlerGetRooms(w http.ResponseWriter, r *http.Request) {
 
 	responseRoom := aggregateRoomDetail(room)
 
-	respondWithJSON(w, http.StatusOK, response{
-		RoomDetail: responseRoom,
-	})
+	respondWithJSON(w, http.StatusOK, response{responseRoom})
 }
 
 func (cfg *apiConfig) handlerRetrieveRooms(w http.ResponseWriter, r *http.Request) {
@@ -154,9 +149,18 @@ func (cfg *apiConfig) handlerUpdateRooms(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	_, err = cfg.db.UpdateRoom(r.Context(), database.UpdateRoomParams{
-		ID:   roomID,
-		Name: params.Name,
+	var roomDetail database.GetRoomDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		_, err = q.UpdateRoom(r.Context(), database.UpdateRoomParams{
+			ID:   roomID,
+			Name: params.Name,
+		})
+		if err != nil {
+			return err
+		}
+
+		roomDetail, err = q.GetRoomDetailByID(r.Context(), roomID)
+		return err
 	})
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -167,21 +171,9 @@ func (cfg *apiConfig) handlerUpdateRooms(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	room, err := cfg.db.GetRoomDetailByID(r.Context(), roomID)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			respondWithError(w, http.StatusNotFound, "Room not found", err)
-			return
-		}
-		respondWithError(w, http.StatusInternalServerError, "Couldn't get room", err)
-		return
-	}
+	responseRoom := aggregateRoomDetail(roomDetail)
 
-	responseRoom := aggregateRoomDetail(room)
-
-	respondWithJSON(w, http.StatusOK, response{
-		RoomDetail: responseRoom,
-	})
+	respondWithJSON(w, http.StatusOK, response{responseRoom})
 }
 
 func (cfg *apiConfig) handlerDeleteRooms(w http.ResponseWriter, r *http.Request) {

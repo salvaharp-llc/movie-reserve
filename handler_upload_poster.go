@@ -12,10 +12,6 @@ import (
 )
 
 func (cfg *apiConfig) handlerUploadPoster(w http.ResponseWriter, r *http.Request) {
-	type response struct {
-		MovieDetail `json:"movie"`
-	}
-
 	movieIDString := r.PathValue("movieID")
 	movieID, err := uuid.Parse(movieIDString)
 	if err != nil {
@@ -74,15 +70,5 @@ func (cfg *apiConfig) handlerUploadPoster(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	movie, err := cfg.db.GetMovieDetailByID(r.Context(), movieID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't fetch updated movie", err)
-		return
-	}
-
-	responseMovie := aggregateMovieDetail(movie)
-
-	respondWithJSON(w, http.StatusOK, response{
-		MovieDetail: responseMovie,
-	})
+	w.WriteHeader(http.StatusNoContent)
 }

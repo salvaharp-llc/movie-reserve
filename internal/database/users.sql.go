@@ -11,6 +11,40 @@ import (
 	"github.com/google/uuid"
 )
 
+const createAdmin = `-- name: CreateAdmin :one
+INSERT INTO users (id, created_at, updated_at, email, hashed_password, role, is_active)
+VALUES (
+    gen_random_uuid(),
+    NOW(),
+    NOW(),
+    $1,
+    $2,
+    'admin',
+    true
+)
+RETURNING id, created_at, updated_at, email, hashed_password, role, is_active
+`
+
+type CreateAdminParams struct {
+	Email          string
+	HashedPassword string
+}
+
+func (q *Queries) CreateAdmin(ctx context.Context, arg CreateAdminParams) (User, error) {
+	row := q.db.QueryRowContext(ctx, createAdmin, arg.Email, arg.HashedPassword)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Email,
+		&i.HashedPassword,
+		&i.Role,
+		&i.IsActive,
+	)
+	return i, err
+}
+
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (id, created_at, updated_at, email, hashed_password)
 VALUES (

@@ -71,27 +71,28 @@ func (cfg *apiConfig) handlerCreateReservations(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	reservation, err := cfg.db.CreateReservation(r.Context(), database.CreateReservationParams{
-		UserID:      userID,
-		ScreeningID: screeningUUID,
-		SeatID:      seatUUID,
+	var reservationDetails database.GetReservationDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		reservation, err := q.CreateReservation(r.Context(), database.CreateReservationParams{
+			UserID:      userID,
+			ScreeningID: screeningUUID,
+			SeatID:      seatUUID,
+		})
+		if err != nil {
+			return err
+		}
+
+		reservationDetails, err = q.GetReservationDetailByID(r.Context(), reservation.ID)
+		return err
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error creating reservation", err)
-		return
-	}
-
-	reservationDetails, err := cfg.db.GetReservationDetailByID(r.Context(), reservation.ID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error fetching reservation details", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create reservation", err)
 		return
 	}
 
 	responseReservation := aggregateReservationDetails(reservationDetails)
 
-	respondWithJSON(w, http.StatusCreated, response{
-		ReservationDetail: responseReservation,
-	})
+	respondWithJSON(w, http.StatusCreated, response{responseReservation})
 }
 
 func (cfg *apiConfig) handlerGetReservations(w http.ResponseWriter, r *http.Request) {
@@ -134,9 +135,7 @@ func (cfg *apiConfig) handlerGetReservations(w http.ResponseWriter, r *http.Requ
 
 	responseReservation := aggregateReservationDetails(reservation)
 
-	respondWithJSON(w, http.StatusOK, response{
-		ReservationDetail: responseReservation,
-	})
+	respondWithJSON(w, http.StatusOK, response{responseReservation})
 }
 
 func (cfg *apiConfig) handlerRetrieveReservations(w http.ResponseWriter, r *http.Request) {
@@ -223,84 +222,6 @@ func (cfg *apiConfig) handlerRetrieveReservationsAdmin(w http.ResponseWriter, r 
 	responseReservations := aggregateReservationSummaries(reservations)
 
 	respondWithJSON(w, http.StatusOK, response{Reservations: responseReservations})
-}
-
-func (cfg *apiConfig) handlerUpdateReservations(w http.ResponseWriter, r *http.Request) {
-	type parameters struct {
-		UserID      string `json:"user_id"`
-		ScreeningID string `json:"screening_id"`
-		SeatID      string `json:"seat_id"`
-	}
-	type response struct {
-		ReservationDetail `json:"reservation"`
-	}
-
-	reservationIDString := r.PathValue("reservationID")
-	reservationID, err := uuid.Parse(reservationIDString)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid ID", err)
-		return
-	}
-
-	decoder := json.NewDecoder(r.Body)
-	params := parameters{}
-	if err := decoder.Decode(&params); err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error decoding parameters", err)
-		return
-	}
-
-	if strings.TrimSpace(params.UserID) == "" {
-		respondWithError(w, http.StatusBadRequest, "User ID is required", nil)
-		return
-	}
-	if strings.TrimSpace(params.ScreeningID) == "" {
-		respondWithError(w, http.StatusBadRequest, "Screening ID is required", nil)
-		return
-	}
-	if strings.TrimSpace(params.SeatID) == "" {
-		respondWithError(w, http.StatusBadRequest, "Seat ID is required", nil)
-		return
-	}
-
-	userUUID, err := uuid.Parse(params.UserID)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid user ID", err)
-		return
-	}
-
-	screeningUUID, err := uuid.Parse(params.ScreeningID)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid screening ID", err)
-		return
-	}
-
-	seatUUID, err := uuid.Parse(params.SeatID)
-	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid seat ID", err)
-		return
-	}
-
-	reservation, err := cfg.db.UpdateReservation(r.Context(), database.UpdateReservationParams{
-		ID:          reservationID,
-		UserID:      userUUID,
-		ScreeningID: screeningUUID,
-		SeatID:      seatUUID,
-	})
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't update reservation", err)
-		return
-	}
-
-	reservationDetails, err := cfg.db.GetReservationDetailByID(r.Context(), reservation.ID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error fetching reservation details", err)
-		return
-	}
-
-	responseReservation := aggregateReservationDetails(reservationDetails)
-	respondWithJSON(w, http.StatusOK, response{
-		ReservationDetail: responseReservation,
-	})
 }
 
 func (cfg *apiConfig) handlerDeleteReservations(w http.ResponseWriter, r *http.Request) {

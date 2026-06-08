@@ -62,19 +62,22 @@ func (cfg *apiConfig) handlerCreateSeats(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	seat, err := cfg.db.CreateSeat(r.Context(), database.CreateSeatParams{
-		RoomID:     roomUUID,
-		RowLabel:   params.RowLabel,
-		SeatNumber: params.SeatNumber,
+	var seatDetail database.GetSeatDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		seat, err := q.CreateSeat(r.Context(), database.CreateSeatParams{
+			RoomID:     roomUUID,
+			RowLabel:   params.RowLabel,
+			SeatNumber: params.SeatNumber,
+		})
+		if err != nil {
+			return err
+		}
+
+		seatDetail, err = q.GetSeatDetailByID(r.Context(), seat.ID)
+		return err
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error creating seat", err)
-		return
-	}
-
-	seatDetail, err := cfg.db.GetSeatDetailByID(r.Context(), seat.ID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error fetching created seat details", err)
 		return
 	}
 
@@ -173,20 +176,27 @@ func (cfg *apiConfig) handlerUpdateSeats(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	seat, err := cfg.db.UpdateSeat(r.Context(), database.UpdateSeatParams{
-		ID:         seatID,
-		RoomID:     roomUUID,
-		RowLabel:   params.RowLabel,
-		SeatNumber: params.SeatNumber,
+	var seatDetail database.GetSeatDetailByIDRow
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		_, err := q.UpdateSeat(r.Context(), database.UpdateSeatParams{
+			ID:         seatID,
+			RoomID:     roomUUID,
+			RowLabel:   params.RowLabel,
+			SeatNumber: params.SeatNumber,
+		})
+		if err != nil {
+			return err
+		}
+
+		seatDetail, err = q.GetSeatDetailByID(r.Context(), seatID)
+		return err
 	})
 	if err != nil {
+		if err == sql.ErrNoRows {
+			respondWithError(w, http.StatusNotFound, "Seat not found", err)
+			return
+		}
 		respondWithError(w, http.StatusInternalServerError, "Couldn't update seat", err)
-		return
-	}
-
-	seatDetail, err := cfg.db.GetSeatDetailByID(r.Context(), seat.ID)
-	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Error fetching updated seat details", err)
 		return
 	}
 

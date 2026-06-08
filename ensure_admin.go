@@ -20,8 +20,18 @@ func (cfg *apiConfig) ensureAdmin() error {
 		return errors.New("ADMIN_PASSWORD must be set")
 	}
 
-	_, err := cfg.db.GetUserByEmail(context.Background(), email)
+	user, err := cfg.db.GetUserByEmail(context.Background(), email)
 	if err == nil {
+		if user.Role != auth.RoleAdmin {
+			return errors.New("user exists but is not an admin")
+		}
+		match, err := auth.CheckPasswordHash(pass, user.HashedPassword)
+		if err != nil {
+			return err
+		}
+		if !match {
+			return errors.New("admin user exists but password does not match")
+		}
 		return nil
 	}
 	if err != sql.ErrNoRows {
@@ -33,14 +43,9 @@ func (cfg *apiConfig) ensureAdmin() error {
 		return err
 	}
 
-	user, err := cfg.db.CreateUser(context.Background(), database.CreateUserParams{
+	_, err = cfg.db.CreateAdmin(context.Background(), database.CreateAdminParams{
 		Email:          email,
 		HashedPassword: hashed,
 	})
-	if err != nil {
-		return err
-	}
-
-	_, err = cfg.db.MakeAdmin(context.Background(), user.ID)
 	return err
 }
