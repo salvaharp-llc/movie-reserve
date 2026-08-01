@@ -7,6 +7,7 @@ from app.rag.lib.augmented_generation import (
     client,
     GEN_MODEL
 )
+from app.rag.lib.search_utils import DEFAULT_SEARCH_LIMIT
 
 class RagHandler:
 
@@ -14,7 +15,9 @@ class RagHandler:
         movies = load_movies()
         self.hybrid_search = HybridSearch(movies)
 
-    async def ask(self, query: str, top_k: int):
+    async def ask(self, query: str, top_k: int | None = None) -> RagResponse:
+        if top_k is None:
+            top_k = DEFAULT_SEARCH_LIMIT
 
         results = self.hybrid_search.rrf_search(query, limit=top_k)
         

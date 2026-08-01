@@ -39,7 +39,7 @@ func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request
 		Description    *string    `json:"description"`     // optional
 		RuntimeMinutes *int32     `json:"runtime_minutes"` // optional
 		ReleaseDate    *time.Time `json:"release_date"`    // optional
-		GenreIDs       []string   `json:"genre_ids"`
+		GenreIDs       []string   `json:"genre_ids"`       // optional
 	}
 	type response struct {
 		MovieDetail `json:"movie"`
@@ -59,11 +59,6 @@ func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request
 	}
 	if strings.TrimSpace(params.Slug) == "" {
 		respondWithError(w, http.StatusBadRequest, "Movie slug is required", nil)
-		return
-	}
-
-	if len(params.GenreIDs) == 0 {
-		respondWithError(w, http.StatusBadRequest, "At least one genre ID is required", nil)
 		return
 	}
 
@@ -304,7 +299,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		Description    *string    `json:"description"`     // optional
 		RuntimeMinutes *int32     `json:"runtime_minutes"` // optional
 		ReleaseDate    *time.Time `json:"release_date"`    // optional
-		GenreIDs       []string   `json:"genre_ids"`
+		GenreIDs       []string   `json:"genre_ids"`       // optional - if empty, movie will be disassociated from all genres
 	}
 	type response struct {
 		MovieDetail `json:"movie"`
@@ -331,11 +326,6 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 	}
 	if strings.TrimSpace(params.Slug) == "" {
 		respondWithError(w, http.StatusBadRequest, "Movie slug is required", nil)
-		return
-	}
-
-	if len(params.GenreIDs) == 0 {
-		respondWithError(w, http.StatusBadRequest, "At least one genre ID is required", nil)
 		return
 	}
 
@@ -431,9 +421,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 
 	movieResponse := aggregateMovieDetail(movieDetail)
 
-	respondWithJSON(w, http.StatusOK, response{
-		MovieDetail: movieResponse,
-	})
+	respondWithJSON(w, http.StatusOK, response{movieResponse})
 }
 
 func (cfg *apiConfig) handlerDeleteMovies(w http.ResponseWriter, r *http.Request) {

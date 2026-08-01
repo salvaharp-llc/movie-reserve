@@ -46,7 +46,7 @@ func (cfg *apiConfig) handlerCreateGenres(w http.ResponseWriter, r *http.Request
 	}
 
 	respondWithJSON(w, http.StatusCreated, response{
-		Genre: Genre{
+		Genre{
 			ID:        genre.ID,
 			CreatedAt: genre.CreatedAt,
 			UpdatedAt: genre.UpdatedAt,
@@ -78,7 +78,7 @@ func (cfg *apiConfig) handlerGetGenres(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, response{
-		Genre: Genre{
+		Genre{
 			ID:        genre.ID,
 			CreatedAt: genre.CreatedAt,
 			UpdatedAt: genre.UpdatedAt,
@@ -160,7 +160,7 @@ func (cfg *apiConfig) handlerUpdateGenres(w http.ResponseWriter, r *http.Request
 	}
 
 	respondWithJSON(w, http.StatusOK, response{
-		Genre: Genre{
+		Genre{
 			ID:        genre.ID,
 			CreatedAt: genre.CreatedAt,
 			UpdatedAt: genre.UpdatedAt,

@@ -23,15 +23,19 @@ type Config struct {
 	MailPort     string `env:"MAIL_PORT,required"`
 	MailUsername string `env:"MAIL_USERNAME,required"`
 	MailPassword string `env:"MAIL_PASSWORD,required"`
+	RagServerURL string `env:"RAG_SERVER_URL,required"`
+	RagAPIKey    string `env:"RAG_API_KEY,required"`
 }
 
 type apiConfig struct {
-	db          *database.DbStore
-	emailSender *email.EmailSender
-	jwtSecret   string
-	platform    string
-	assetsRoot  string
-	port        string
+	db           *database.DbStore
+	emailSender  *email.EmailSender
+	jwtSecret    string
+	platform     string
+	assetsRoot   string
+	port         string
+	ragServerURL string
+	ragAPIKey    string
 }
 
 const (
@@ -65,12 +69,14 @@ func main() {
 	}
 
 	apiCfg := apiConfig{
-		db:          dbStore,
-		emailSender: emailSender,
-		jwtSecret:   cfg.JWTSecret,
-		platform:    cfg.Platform,
-		assetsRoot:  cfg.AssetsRoot,
-		port:        cfg.Port,
+		db:           dbStore,
+		emailSender:  emailSender,
+		jwtSecret:    cfg.JWTSecret,
+		platform:     cfg.Platform,
+		assetsRoot:   cfg.AssetsRoot,
+		port:         cfg.Port,
+		ragServerURL: cfg.RagServerURL,
+		ragAPIKey:    cfg.RagAPIKey,
 	}
 
 	if err := apiCfg.ensureAdmin(); err != nil {
@@ -107,6 +113,8 @@ func main() {
 	publicMux.HandleFunc("GET /api/movies/{movieID}", apiCfg.handlerGetMovies)
 	publicMux.HandleFunc("GET /api/movies", apiCfg.handlerRetrieveMovies)
 	publicMux.HandleFunc("GET /api/movies/current", apiCfg.handlerRetrieveCurrentMovies)
+
+	publicMux.HandleFunc("POST /api/rag", apiCfg.handlerRAG) // RAG endpoint
 
 	publicMux.HandleFunc("GET /api/rooms/{roomID}", apiCfg.handlerGetRooms)
 	publicMux.HandleFunc("GET /api/rooms", apiCfg.handlerRetrieveRooms)

@@ -3,5 +3,11 @@ requests/
 assets/
 .env
 movie-reserve
+data/
+cache/
+
+__pycache__/
+
+*_cli.py
 
 TODO.md
