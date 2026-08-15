@@ -1,7 +1,5 @@
-from openai import OpenAI
-
-from .gen_utils import client, GEN_MODEL
-from .search_utils import load_movies, DEFAULT_SEARCH_LIMIT
+from .gen_utils import async_client, GEN_MODEL
+from .search_utils import DEFAULT_SEARCH_LIMIT
 from .hybrid_search import HybridSearch
 
 def build_prompt(query: str, docs: str, answer_type: str = "search") -> str | None:
@@ -75,57 +73,9 @@ def build_prompt(query: str, docs: str, answer_type: str = "search") -> str | No
         case _:
             return None
 
-def rag_command(query: str) -> dict:
-    return generate_answer(query, "search")
-
-def summarize_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
-    return generate_answer(query, "summary", limit=limit)
-
-def citations_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
-    return generate_answer(query, "citation", limit=limit)
-
-def question_command(query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
-    return generate_answer(query, "question_answer", limit=limit)
-
 def format_search_results(results: list[dict]) -> str:
     formatted_results = []
     for result in results:
         # formatted_results.append(f"{result['title']}: {result['description']}") results' descriptions too long of a prompt for the LLM to handle, so just include the title
         formatted_results.append(result['title'])
     return '\n\n'.join(formatted_results)
-
-def generate_answer(query: str, answer_type: str, limit: int = DEFAULT_SEARCH_LIMIT) -> dict:
-    movies = load_movies()
-    hs = HybridSearch(movies)
-    results = hs.rrf_search(query, limit=limit)
-
-    if not results:
-        return {
-            "search_results": [],
-            "error": "No results found",
-        }
-    
-    docs = format_search_results(results)
-    
-    prompt = build_prompt(query, docs, answer_type)
-    if prompt is None:
-            return {
-                "search_results": results,
-                "error": f"{answer_type} generation is not supported",
-            }
-
-    response = client.chat.completions.create(
-        model=GEN_MODEL,
-        messages=[
-            {
-                "role": "user", 
-                "content": prompt
-            }
-        ],
-    )
-    answer = (response.choices[0].message.content or "").strip().strip('"')
-
-    return {
-        "search_results": results,
-        "answer": answer,
-    }

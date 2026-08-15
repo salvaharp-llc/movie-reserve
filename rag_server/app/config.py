@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     VERSION: str = "1.0.0"
     OPENROUTER_API_KEY: str
     API_KEY: str
+    DB_URL: str
 
     class Config:
         env_file = ".env"

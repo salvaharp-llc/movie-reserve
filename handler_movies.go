@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -132,6 +134,33 @@ func (cfg *apiConfig) handlerCreateMovies(w http.ResponseWriter, r *http.Request
 		})
 		if err != nil {
 			return err
+		}
+
+		body, err := json.Marshal(AddRequest{
+			ID:          movie.ID,
+			Title:       movie.Title,
+			Description: movie.Description.String,
+		})
+		if err != nil {
+			return err
+		}
+
+		request, err := http.NewRequest("POST", cfg.ragServerURL+"/movies", bytes.NewBuffer(body))
+		if err != nil {
+			return err
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Authorization", "Bearer "+cfg.ragAPIKey)
+
+		client := &http.Client{}
+		resp, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("Could not add movie to RAG service: %s", resp.Status)
 		}
 
 		movieDetail, err = q.GetMovieDetailByID(r.Context(), movie.ID)
@@ -382,7 +411,7 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 
 	var movieDetail database.GetMovieDetailByIDRow
 	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
-		_, err = q.UpdateMovie(r.Context(), database.UpdateMovieParams{
+		movie, err := q.UpdateMovie(r.Context(), database.UpdateMovieParams{
 			ID:             movieID,
 			Title:          params.Title,
 			Slug:           params.Slug,
@@ -405,6 +434,32 @@ func (cfg *apiConfig) handlerUpdateMovies(w http.ResponseWriter, r *http.Request
 		})
 		if err != nil {
 			return err
+		}
+
+		body, err := json.Marshal(UpdateRequest{
+			Title:       movie.Title,
+			Description: movie.Description.String,
+		})
+		if err != nil {
+			return err
+		}
+
+		request, err := http.NewRequest("PUT", cfg.ragServerURL+"/movies/"+movieID.String(), bytes.NewBuffer(body))
+		if err != nil {
+			return err
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Authorization", "Bearer "+cfg.ragAPIKey)
+
+		client := &http.Client{}
+		resp, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("Could not update movie in RAG service: %s", resp.Status)
 		}
 
 		movieDetail, err = q.GetMovieDetailByID(r.Context(), movieID)
@@ -432,7 +487,28 @@ func (cfg *apiConfig) handlerDeleteMovies(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	err = cfg.db.DeleteMovie(r.Context(), movieID)
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		request, err := http.NewRequest("DELETE", cfg.ragServerURL+"/movies/"+movieID.String(), nil)
+		if err != nil {
+			return err
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Authorization", "Bearer "+cfg.ragAPIKey)
+
+		client := &http.Client{}
+		resp, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("Could not delete movie from RAG service: %s", resp.Status)
+		}
+
+		err = q.DeleteMovie(r.Context(), movieID)
+		return err
+	})
 	if err != nil {
 		if err == sql.ErrNoRows {
 			respondWithError(w, http.StatusNotFound, "Movie not found", err)

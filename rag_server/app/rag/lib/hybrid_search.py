@@ -1,5 +1,6 @@
 import os
 from typing import Optional
+import uuid 
 
 from .search_utils import (
     load_movies,
@@ -15,15 +16,27 @@ from .keyword_search import InvertedIndex
 from .semantic_search import ChunkedSemanticSearch
 
 class HybridSearch:
-    def __init__(self, documents):
-        self.documents = documents
+    def __init__(self, documents: list[dict]):
         self.semantic_search = ChunkedSemanticSearch()
         self.semantic_search.load_or_create_chunk_embeddings(documents)
 
         self.idx = InvertedIndex()
-        if not os.path.exists(self.idx.index_path):
-            self.idx.build()
-            self.idx.save()
+        self.idx.load_or_build_index(documents)
+
+    def exists(self, id: uuid.UUID) -> bool:
+        return id in self.idx.docmap
+
+    def add_document(self, doc: dict) -> None:
+        self.semantic_search.add_document(doc)
+        self.idx.add_document(doc)
+
+    def update_document(self, doc: dict) -> None:
+        self.semantic_search.update_document(doc)
+        self.idx.update_document(doc)
+
+    def delete_document(self, doc_id: uuid.UUID) -> None:
+        self.idx.delete_document(doc_id)
+        self.semantic_search.delete_document(doc_id)
 
     def _bm25_search(self, query, limit):
         self.idx.load()
@@ -36,7 +49,7 @@ class HybridSearch:
         norm_keyword_results = normalize_search_results(keyword_results)
         norm_semantic_results = normalize_search_results(semantic_results)
 
-        results: dict[int, dict] = {}
+        results: dict[uuid.UUID, dict] = {}
         for result in norm_keyword_results:
             doc_id = result["id"]
             results[doc_id] = {
@@ -69,7 +82,7 @@ class HybridSearch:
         keyword_results = self._bm25_search(query, limit * 500)
         semantic_results = self.semantic_search.search_chunks(query, limit * 500)
 
-        results: dict[int, dict] = {}
+        results: dict[uuid.UUID, dict] = {}
         for i, result in enumerate(keyword_results, 1):
             doc_id = result["id"]
             results[doc_id] = {

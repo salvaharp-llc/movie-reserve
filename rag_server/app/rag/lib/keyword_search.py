@@ -3,6 +3,7 @@ import pickle
 import string
 import math
 from collections import Counter, defaultdict
+import uuid
 
 from nltk.stem import PorterStemmer
 
@@ -11,35 +12,59 @@ from .search_utils import (
     DEFAULT_SEARCH_LIMIT,
     BM25_K1,
     BM25_B,
-    load_movies,
     load_stopwords,
 )
 
+stopwords = load_stopwords()
+
 class InvertedIndex:
     def __init__(self) -> None:
-        self.index: defaultdict[str, set[int]] = defaultdict(set)
-        self.docmap: dict[int, dict] = {}
-        self.doc_lengths: dict[int, int] = {}
-        self.term_frequencies: defaultdict[int, Counter] = defaultdict(Counter)
+        self.index: defaultdict[str, set[uuid.UUID]] = defaultdict(set)
+        self.docmap: dict[uuid.UUID, dict] = {}
+        self.doc_lengths: dict[uuid.UUID, int] = {}
+        self.term_frequencies: defaultdict[uuid.UUID, Counter] = defaultdict(Counter)
         self.index_path = os.path.join(CACHE_DIR, "index.pkl")
-        self.docmap_path = os.path.join(CACHE_DIR, "docmap.pkl")
         self.tf_path = os.path.join(CACHE_DIR, "term_frequencies.pkl")
         self.doc_lengths_path = os.path.join(CACHE_DIR, "doc_lengths.pkl")
 
-    def build(self) -> None:
-        movies = load_movies()
+    def add_document(self, movie: dict) -> None:
+        doc_id = movie["id"]
+        text = f"{movie["title"]} {movie["description"]}"
+        self.__add_document(doc_id, text)
+        self.docmap[doc_id] = movie
+        self.save()
+
+    def update_document(self, movie: dict) -> None:
+        if movie["id"] not in self.docmap:
+            raise ValueError(f"Document with id {movie["id"]} does not exist in the index.")
+        
+        doc_id = movie["id"]
+        for token in self.term_frequencies[doc_id]:
+            self.index[token].discard(doc_id)
+        self.term_frequencies[doc_id].clear()
+        self.add_document(movie)
+
+    def delete_document(self, doc_id: uuid.UUID) -> None:
+        if doc_id not in self.docmap:
+            raise ValueError(f"Document with id {doc_id} does not exist in the index.")
+        
+        for token in self.term_frequencies[doc_id]:
+            self.index[token].discard(doc_id)
+        del self.docmap[doc_id]
+        del self.term_frequencies[doc_id]
+        del self.doc_lengths[doc_id]
+        self.save()
+
+    def build(self, movies: list[dict]) -> None:
         for movie in movies:
             doc_id = movie["id"]
             text = f"{movie["title"]} {movie["description"]}"
             self.__add_document(doc_id, text)
-            self.docmap[doc_id] = movie
 
     def save(self) -> None:
         os.makedirs(CACHE_DIR, exist_ok=True)
         with open(self.index_path, "wb") as f:
             pickle.dump(self.index, f)
-        with open(self.docmap_path, "wb") as f:
-            pickle.dump(self.docmap, f)
         with open(self.tf_path, "wb") as f:
             pickle.dump(self.term_frequencies, f)
         with open(self.doc_lengths_path, "wb") as f:
@@ -48,18 +73,27 @@ class InvertedIndex:
     def load(self) -> None:
         with open(self.index_path, "rb") as f:
             self.index = pickle.load(f)
-        with open(self.docmap_path, "rb") as f:
-            self.docmap = pickle.load(f)
         with open(self.tf_path, "rb") as f:
             self.term_frequencies = pickle.load(f)
         with open(self.doc_lengths_path, "rb") as f:
             self.doc_lengths = pickle.load(f)
+
+    def load_or_build_index(self, movies: list[dict]) -> None:
+        for movie in movies:
+            self.docmap[movie["id"]] = movie
+
+        if os.path.exists(self.index_path):
+            self.load()
+        else:
+            self.build(movies)
+            self.save()
+            
     
-    def get_documents(self, term: str) -> list[int]:
+    def get_documents(self, term: str) -> list[uuid.UUID]:
         doc_ids = self.index.get(term, set())
         return sorted(list(doc_ids))
     
-    def __add_document(self, doc_id: int, text: str) -> None:
+    def __add_document(self, doc_id: uuid.UUID, text: str) -> None:
         tokens = tokenize_text(text)
         for token in set(tokens):
             self.index[token].add(doc_id)
@@ -72,14 +106,14 @@ class InvertedIndex:
             return 0.0
         return sum(self.doc_lengths.values()) / num_docs
     
-    def get_tf(self, doc_id: int, term: str) -> int:
+    def get_tf(self, doc_id: uuid.UUID, term: str) -> int:
         tokens = tokenize_text(term)
         if len(tokens) != 1:
             raise ValueError("term must be a single token")
         token = tokens[0]
         return self.term_frequencies[doc_id][token]
     
-    def get_bm25_tf(self, doc_id: int, term: str, k1: float = BM25_K1, b: float = BM25_B) -> float:
+    def get_bm25_tf(self, doc_id: uuid.UUID, term: str, k1: float = BM25_K1, b: float = BM25_B) -> float:
         tf = self.get_tf(doc_id, term)
         avg_doc_length = self.__get_avg_doc_length()
         doc_length = self.doc_lengths.get(doc_id, 0)
@@ -109,12 +143,12 @@ class InvertedIndex:
         term_doc_count = len(self.index[token])
         return math.log((doc_count - term_doc_count + 0.5) / (term_doc_count + 0.5) + 1)
 
-    def get_tf_idf(self, doc_id: int, term: str) -> float:
+    def get_tf_idf(self, doc_id: uuid.UUID, term: str) -> float:
         tf = self.get_tf(doc_id, term)
         idf = self.get_idf(term)
         return tf * idf
-    
-    def bm25(self, doc_id: int, term: str) -> float:
+
+    def bm25(self, doc_id: uuid.UUID, term: str) -> float:
         bm25_tf = self.get_bm25_tf(doc_id, term)
         bm25_idf = self.get_bm25_idf(term)
         return bm25_tf * bm25_idf
@@ -122,7 +156,7 @@ class InvertedIndex:
     def bm25_search(self, query: str, limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
         query_tokens = tokenize_text(query)
 
-        scores: dict[int, float] = {}
+        scores: dict[uuid.UUID, float] = {}
         for doc_id in self.docmap:
             score = 0.0
             for token in query_tokens:
@@ -179,7 +213,6 @@ def has_matching_token(query_tokens: list[str], title_tokens: list[str]) -> bool
 def tokenize_text(text: str) -> list[str]:
     text = preprocess_text(text)
     tokens = text.split()
-    stopwords = load_stopwords()
     filtered_tokens = filter(lambda token: token not in stopwords, tokens)
     stemmer = PorterStemmer()
     stemmed_tokens = map(lambda token: stemmer.stem(token), filtered_tokens)

@@ -242,39 +242,3 @@ func (q *Queries) GetReservationsSummary(ctx context.Context, arg GetReservation
 	}
 	return items, nil
 }
-
-const updateReservation = `-- name: UpdateReservation :one
-UPDATE reservations
-SET updated_at = NOW(), user_id = $2, screening_id = $3, room_id = s.room_id, seat_id = $4
-FROM screenings s
-WHERE reservations.id = $1
-  AND s.id = $3
-RETURNING reservations.id, reservations.user_id, reservations.screening_id, reservations.room_id, reservations.seat_id, reservations.created_at, reservations.updated_at
-`
-
-type UpdateReservationParams struct {
-	ID          uuid.UUID
-	UserID      uuid.UUID
-	ScreeningID uuid.UUID
-	SeatID      uuid.UUID
-}
-
-func (q *Queries) UpdateReservation(ctx context.Context, arg UpdateReservationParams) (Reservation, error) {
-	row := q.db.QueryRowContext(ctx, updateReservation,
-		arg.ID,
-		arg.UserID,
-		arg.ScreeningID,
-		arg.SeatID,
-	)
-	var i Reservation
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.ScreeningID,
-		&i.RoomID,
-		&i.SeatID,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
-}

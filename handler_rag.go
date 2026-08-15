@@ -5,16 +5,29 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type RagRequest struct {
 	Query string `json:"query"`
-	TopK  int    `json:"top_k,omitempty"`
+	TopK  *int   `json:"top_k"`
 }
 
 type RagResponse struct {
 	Answer  string           `json:"answer"`
 	Sources []map[string]any `json:"sources"`
+}
+
+type AddRequest struct {
+	ID          uuid.UUID `json:"id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+}
+
+type UpdateRequest struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
 }
 
 func (cfg *apiConfig) handlerRAG(w http.ResponseWriter, r *http.Request) {
