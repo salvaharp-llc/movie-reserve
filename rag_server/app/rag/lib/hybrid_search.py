@@ -2,12 +2,14 @@ import os
 from typing import Optional
 import uuid 
 
+from PIL import ImageFile
 from .search_utils import (
     load_movies,
     DEFAULT_ALPHA,
     DEFAULT_SEARCH_LIMIT,
     DEFAULT_K,
     SEARCH_MULTIPLIER,
+    SENTENCE_TRANSFORMER
 )
 
 from .query_enhancement import enhance_query
@@ -16,8 +18,8 @@ from .keyword_search import InvertedIndex
 from .semantic_search import ChunkedSemanticSearch
 
 class HybridSearch:
-    def __init__(self, documents: list[dict]):
-        self.semantic_search = ChunkedSemanticSearch()
+    def __init__(self, documents: list[dict], semantic_encoder: str = SENTENCE_TRANSFORMER):
+        self.semantic_search = ChunkedSemanticSearch(semantic_encoder)
         self.semantic_search.load_or_create_chunk_embeddings(documents)
 
         self.idx = InvertedIndex()
@@ -35,8 +37,11 @@ class HybridSearch:
         self.idx.update_document(doc)
 
     def delete_document(self, doc_id: uuid.UUID) -> None:
-        self.idx.delete_document(doc_id)
         self.semantic_search.delete_document(doc_id)
+        self.idx.delete_document(doc_id)
+
+    def set_image(self, doc_id: uuid.UUID, image: ImageFile) -> None:
+        self.semantic_search.set_image(doc_id, image)
 
     def _bm25_search(self, query, limit):
         self.idx.load()

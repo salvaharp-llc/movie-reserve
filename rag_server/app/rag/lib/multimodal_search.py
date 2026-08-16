@@ -5,11 +5,11 @@ from PIL import Image
 from sentence_transformers import SentenceTransformer
 
 from .semantic_search import cosine_similarity
-from .search_utils import load_movies, DEFAULT_SEARCH_LIMIT, CACHE_DIR
+from .search_utils import load_movies, DEFAULT_SEARCH_LIMIT, CACHE_DIR, MULTIMODAL_SENTENCE_TRANSFORMER
 
 
 class MultimodalSearch():
-    def __init__(self, documents: list[dict] = [], model_name: str = "clip-ViT-B-32"):
+    def __init__(self, documents: list[dict] = [], model_name: str = MULTIMODAL_SENTENCE_TRANSFORMER):
         self.documents = documents
         self.texts = []
         for doc in documents:

@@ -1,10 +1,12 @@
 import uuid
 
-from fastapi import APIRouter, status, Response
-
+from fastapi import APIRouter, status, Response, UploadFile, File
+from PIL import Image
 from app.models.request import AddRequest, RagRequest, UpdateRequest
 from app.models.response import RagResponse
 from app.rag.rag_service import rag_service
+
+Image.MAX_IMAGE_PIXELS = 20_000_000
 
 router = APIRouter(
     prefix="/rag",
@@ -62,6 +64,23 @@ async def delete_document(id: uuid.UUID, response: Response):
 
     err = await rag_service.delete(
         id=id
+    )
+    if err:
+        response.status_code = status.HTTP_400_BAD_REQUEST
+        return {"error": str(err)}
+
+
+@router.put(
+    "/images/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def add_image(id: uuid.UUID, response: Response, image_file: UploadFile = File(...)):
+
+    image = Image.open(image_file.file)
+
+    err = await rag_service.set_image(
+        id=id,
+        image=image,
     )
     if err:
         response.status_code = status.HTTP_400_BAD_REQUEST

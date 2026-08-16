@@ -1,9 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"fmt"
 	"io"
 	"mime"
+	"mime/multipart"
 	"net/http"
 	"os"
 
@@ -59,14 +62,70 @@ func (cfg *apiConfig) handlerUploadPoster(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	_, err = file.Seek(0, io.SeekStart)
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't rewind file", err)
+		return
+	}
+
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+
+	part, err := writer.CreateFormFile("image_file", "image"+mediaTypeToExt(mediaType))
+	if err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create form writer", err)
+		return
+	}
+
+	if _, err := io.Copy(part, file); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't create form writer", err)
+		return
+	}
+
+	if err := writer.Close(); err != nil {
+		respondWithError(w, http.StatusInternalServerError, "Couldn't close form writer", err)
+		return
+	}
+
 	assetURL := cfg.getAssetURL(assetPath)
 
-	err = cfg.db.UploadMoviePoster(r.Context(), database.UploadMoviePosterParams{
-		ID:        movieID,
-		PosterUrl: sql.NullString{String: assetURL, Valid: true},
+	err = cfg.db.ExecTx(r.Context(), func(q *database.Queries) error {
+		err = q.UploadMoviePoster(r.Context(), database.UploadMoviePosterParams{
+			ID:        movieID,
+			PosterUrl: sql.NullString{String: assetURL, Valid: true},
+		})
+		if err != nil {
+			return err
+		}
+
+		request, err := http.NewRequestWithContext(
+			r.Context(),
+			"PUT",
+			cfg.ragServerURL+"/images/"+movieIDString,
+			&buf,
+		)
+		if err != nil {
+			return err
+		}
+
+		request.Header.Set("Content-Type", writer.FormDataContentType())
+		request.Header.Set("Authorization", "Bearer "+cfg.ragAPIKey)
+
+		client := &http.Client{}
+		resp, err := client.Do(request)
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return fmt.Errorf("Could not add image to RAG service: %s", resp.Status)
+		}
+
+		return nil
 	})
 	if err != nil {
-		respondWithError(w, http.StatusInternalServerError, "Couldn't update movie", err)
+		respondWithError(w, http.StatusInternalServerError, "Couldn't update movie poster or notify RAG service", err)
 		return
 	}
 

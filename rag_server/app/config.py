@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str
     API_KEY: str
     DB_URL: str
+    TRANSFORMER_MODEL: str
 
     class Config:
         env_file = ".env"

@@ -8,6 +8,7 @@ from app.database.movies import Querier
 from app.config import settings
 from app.models.request import EnhanceType
 import sqlalchemy
+from PIL import ImageFile
 from app.rag.lib.augmented_generation import (
     HybridSearch,
     Reranker,
@@ -32,7 +33,7 @@ class RagService:
             } 
             for movie in queries.load_movies()
         ]
-        self.hybrid_search = HybridSearch(docs)
+        self.hybrid_search = HybridSearch(docs, semantic_encoder=settings.TRANSFORMER_MODEL)
         self.reranker = Reranker()
         self._lock = asyncio.Lock()
 
@@ -119,6 +120,14 @@ class RagService:
                 return Error(f"Document with id {id} does not exist.")
             
             await asyncio.to_thread(self.hybrid_search.update_document, doc)
+
+    async def set_image(self, id: uuid.UUID, image: ImageFile) -> Error | None:
+        
+        async with self._lock:
+            if not self.hybrid_search.exists(id):
+                return Error(f"Document with id {id} does not exist.")
+
+            await asyncio.to_thread(self.hybrid_search.set_image, id, image)
 
     async def delete(self, id: uuid.UUID) -> Error | None:
 

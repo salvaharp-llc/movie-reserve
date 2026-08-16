@@ -5,9 +5,11 @@ import os
 import re
 import json
 from sentence_transformers import SentenceTransformer
+from PIL import ImageFile
 
 from .search_utils import (
     SENTENCE_TRANSFORMER,
+    MULTIMODAL_SENTENCE_TRANSFORMER,
     CACHE_DIR,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_CHUNK_OVERLAP,
@@ -17,8 +19,9 @@ from .search_utils import (
 )
 
 class SemanticSearch:
-    def __init__(self) -> None:
-        self.model = SentenceTransformer(SENTENCE_TRANSFORMER)
+    def __init__(self, semantic_encoder: str = SENTENCE_TRANSFORMER) -> None:
+        self.model = SentenceTransformer(semantic_encoder)
+        self.model_name = semantic_encoder
         self.document_map: dict[uuid.UUID, dict] = {}
         self.embeddings = None
         self.embeddings_path = os.path.join(CACHE_DIR, "movie_embeddings.npy")
@@ -78,12 +81,18 @@ class SemanticSearch:
         return results
 
 class ChunkedSemanticSearch(SemanticSearch):
-    def __init__(self) -> None:
-        super().__init__()
+    def __init__(self, semantic_encoder: str = SENTENCE_TRANSFORMER) -> None:
+        super().__init__(semantic_encoder)
         self.chunk_embeddings: np.ndarray = None
         self.chunk_metadata: list[dict] = None
-        self.chunk_embeddings_path = os.path.join(CACHE_DIR, "chunk_embeddings.npy")
-        self.chunk_metadata_path = os.path.join(CACHE_DIR, "chunk_metadata.json")
+        if self.model_name == SENTENCE_TRANSFORMER:
+            self.chunk_embeddings_path = os.path.join(CACHE_DIR, "chunk_embeddings.npy")
+            self.chunk_metadata_path = os.path.join(CACHE_DIR, "chunk_metadata.json")
+        elif self.model_name == MULTIMODAL_SENTENCE_TRANSFORMER:
+            self.chunk_embeddings_path = os.path.join(CACHE_DIR, "multimodal_chunk_embeddings.npy")
+            self.chunk_metadata_path = os.path.join(CACHE_DIR, "multimodal_chunk_metadata.json")
+        else:
+            raise ValueError(f"{semantic_encoder} is not a supported transformer model.")
 
     def save(self) -> None:
         if self.chunk_embeddings is None or self.chunk_metadata is None:
@@ -109,7 +118,6 @@ class ChunkedSemanticSearch(SemanticSearch):
                 {
                     "movie_idx": doc["id"],
                     "chunk_idx": i,
-                    "total_chunks": total_chunks,
                 }
             )
         self.chunk_embeddings = np.append(self.chunk_embeddings, self.model.encode(chunks, show_progress_bar=True), axis=0)
@@ -120,8 +128,8 @@ class ChunkedSemanticSearch(SemanticSearch):
         if doc["id"] not in self.document_map:
             raise ValueError(f"Document with id {doc['id']} does not exist in the index.")
         
-        self.chunk_embeddings = np.array([self.chunk_embeddings[i] for i, m in enumerate(self.chunk_metadata) if m["movie_idx"] != doc["id"]])
-        self.chunk_metadata = [m for m in self.chunk_metadata if m["movie_idx"] != doc["id"]]
+        self.chunk_embeddings = np.array([self.chunk_embeddings[i] for i, m in enumerate(self.chunk_metadata) if m["movie_idx"] != doc["id"] or "image" in m])
+        self.chunk_metadata = [m for m in self.chunk_metadata if m["movie_idx"] != doc["id"] or "image" in m]
 
         self.add_document(doc)
 
@@ -133,6 +141,26 @@ class ChunkedSemanticSearch(SemanticSearch):
         self.chunk_metadata = [m for m in self.chunk_metadata if m["movie_idx"] != doc_id]
         del self.document_map[doc_id]
 
+        self.save()
+
+    def set_image(self, doc_id: uuid.UUID, image: ImageFile) -> None:
+        if doc_id not in self.document_map:
+            raise ValueError(f"Document with id {doc_id} does not exist in the index.")
+
+        if self.model_name != MULTIMODAL_SENTENCE_TRANSFORMER:
+            raise Exception("Cannot embed image if a multimodal transformer is not used as encoder.")
+
+        self.chunk_embeddings = np.array([self.chunk_embeddings[i] for i, m in enumerate(self.chunk_metadata) if not (m["movie_idx"] == doc_id and "image" in m)])
+        self.chunk_metadata = [m for m in self.chunk_metadata if not (m["movie_idx"] == doc_id and "image" in m)]
+
+        self.chunk_embeddings = np.append(self.chunk_embeddings, self.model.encode([image], show_progress_bar=True), axis=0)
+        self.chunk_metadata.append(
+            {
+                "movie_idx": doc_id,
+                "chunk_idx": len(self.chunk_metadata),
+                "image": True
+            }
+        )
         self.save()
 
     def build_chunk_embeddings(self) -> np.ndarray:
@@ -151,7 +179,6 @@ class ChunkedSemanticSearch(SemanticSearch):
                     {
                         "movie_idx": doc["id"],
                         "chunk_idx": i,
-                        "total_chunks": total_chunks,
                     }
                 )
         self.chunk_embeddings = self.model.encode(chunks, show_progress_bar=True)
