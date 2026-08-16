@@ -6,10 +6,13 @@ import uuid
 from app.models.response import RagResponse, Source
 from app.database.movies import Querier
 from app.config import settings
+from app.models.request import EnhanceType
 import sqlalchemy
 from app.rag.lib.augmented_generation import (
-    HybridSearch, 
-    format_search_results, 
+    HybridSearch,
+    Reranker,
+    format_search_results,
+    async_enhance_query,
     build_prompt,
     async_client,
     GEN_MODEL,
@@ -30,16 +33,25 @@ class RagService:
             for movie in queries.load_movies()
         ]
         self.hybrid_search = HybridSearch(docs)
+        self.reranker = Reranker()
         self._lock = asyncio.Lock()
 
-    async def ask(self, query: str, top_k: Optional[int]) -> RagResponse:
+    async def ask(self, query: str, top_k: Optional[int], rerank: bool, enhance: EnhanceType) -> RagResponse:
         if top_k is None:
             top_k = DEFAULT_SEARCH_LIMIT
+
+        if rerank:
+            limit = top_k
+            top_k *= 2
+
+        search_query = query
+        if enhance != EnhanceType.NONE:
+            search_query = await async_enhance_query(query, enhance.value)
 
         async with self._lock:
             results = await asyncio.to_thread(
                 self.hybrid_search.rrf_search, 
-                query, 
+                search_query, 
                 limit=top_k
             )
 
@@ -48,6 +60,19 @@ class RagService:
                 answer="",
                 sources=[]
             )
+
+        if rerank:
+            for result in results:
+                print(result["title"])
+            async with self._lock:
+                results = await asyncio.to_thread(
+                    self.reranker.rerank_cross_encoder,
+                    search_query,
+                    results,
+                    limit=limit
+                )
+            for result in results:
+                print(result["title"])
 
         docs = format_search_results(results)
 

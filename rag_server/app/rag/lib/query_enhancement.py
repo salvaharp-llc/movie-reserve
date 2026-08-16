@@ -1,6 +1,6 @@
 from openai import OpenAI
 
-from .gen_utils import client, GEN_MODEL
+from .gen_utils import client, async_client, GEN_MODEL
 
 enhancement_prompts = {
     # Spell Enhancement
@@ -52,6 +52,26 @@ def enhance_query(query: str, option: str) -> str:
     """
     
     response = client.chat.completions.create(
+        model=GEN_MODEL,
+        messages=[
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+    )
+    corrected = (response.choices[0].message.content or "").strip().strip('"')
+    return corrected if corrected else query
+
+async def async_enhance_query(query: str, option: str) -> str:
+    if option not in enhancement_prompts:
+        return query
+    
+    prompt = f"""{enhancement_prompts[option]}
+    User query: "{query}"
+    """
+    
+    response = await async_client.chat.completions.create(
         model=GEN_MODEL,
         messages=[
             {

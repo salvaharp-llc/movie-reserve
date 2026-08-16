@@ -7,6 +7,7 @@ import json
 from sentence_transformers import SentenceTransformer
 
 from .search_utils import (
+    SENTENCE_TRANSFORMER,
     CACHE_DIR,
     DEFAULT_CHUNK_SIZE,
     DEFAULT_CHUNK_OVERLAP,
@@ -17,7 +18,7 @@ from .search_utils import (
 
 class SemanticSearch:
     def __init__(self) -> None:
-        self.model = SentenceTransformer('all-MiniLM-L6-v2')
+        self.model = SentenceTransformer(SENTENCE_TRANSFORMER)
         self.document_map: dict[uuid.UUID, dict] = {}
         self.embeddings = None
         self.embeddings_path = os.path.join(CACHE_DIR, "movie_embeddings.npy")
@@ -29,7 +30,7 @@ class SemanticSearch:
     
     def build_embeddings(self):
         documents_strings: list[str] = []
-        for doc in self.documents_map.values():
+        for doc in self.document_map.values():
             documents_strings.append(f"{doc['title']}: {doc['description']}")
         self.embeddings = self.model.encode(documents_strings, show_progress_bar=True)
 
@@ -53,14 +54,14 @@ class SemanticSearch:
         if self.embeddings is None or self.embeddings.size == 0:
             raise ValueError("No embeddings loaded. Call `load_or_create_embeddings` first.")
         
-        if self.documents_map is None or len(self.documents_map) == 0:
+        if self.document_map is None or len(self.document_map) == 0:
             raise ValueError("No documents loaded. Call `load_or_create_embeddings` first.")
         
         query_embedding = self.generate_embedding(query)
         scores: list[tuple[float, dict]] = []
-        for i in range(len(self.documents_map)):
+        for i in range(len(self.document_map)):
             similarity_score = cosine_similarity(query_embedding, self.embeddings[i])
-            scores.append((similarity_score, list(self.documents_map.values())[i]))
+            scores.append((similarity_score, list(self.document_map.values())[i]))
 
         scores.sort(key=lambda x: x[0], reverse=True)
         if len(scores) > limit:
@@ -137,7 +138,7 @@ class ChunkedSemanticSearch(SemanticSearch):
     def build_chunk_embeddings(self) -> np.ndarray:
         chunks: list[str] = []
         chunks_metadata: list[dict] = []
-        for doc in self.documents_map.values():
+        for doc in self.document_map.values():
             description = doc["description"].strip()
             if not description:
                 continue

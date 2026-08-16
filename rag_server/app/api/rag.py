@@ -19,7 +19,9 @@ async def query_rag(request: RagRequest):
 
     return await rag_service.ask(
         request.query,
-        request.top_k
+        request.top_k,
+        request.rerank,
+        request.enhance
     )
 
 @router.post(

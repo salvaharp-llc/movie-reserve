@@ -1,6 +1,9 @@
 import json
 import os
 
+SENTENCE_TRANSFORMER = "all-MiniLM-L6-v2"
+CROSS_ENCODER = "cross-encoder/ms-marco-TinyBERT-L2-v2"
+
 DEFAULT_SEARCH_LIMIT = 5
 DOCUMENT_PREVIEW_LENGTH = 100
 

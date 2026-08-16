@@ -9,9 +9,20 @@ import (
 	"github.com/google/uuid"
 )
 
+type EnhanceType string
+
+const (
+	None    EnhanceType = "none"
+	Spell   EnhanceType = "spell"
+	Rewrite EnhanceType = "rewrite"
+	Expand  EnhanceType = "expand"
+)
+
 type RagRequest struct {
-	Query string `json:"query"`
-	TopK  *int   `json:"top_k"`
+	Query   string      `json:"query"`
+	TopK    *int        `json:"top_k"`
+	Rerank  bool        `json:"rerank,omitempty"`
+	Enhance EnhanceType `json:"enhance,omitempty"`
 }
 
 type RagResponse struct {
@@ -51,8 +62,10 @@ func (cfg *apiConfig) handlerRAG(w http.ResponseWriter, r *http.Request) {
 	}
 
 	body, err := json.Marshal(RagRequest{
-		Query: params.Query,
-		TopK:  params.TopK,
+		Query:   params.Query,
+		TopK:    params.TopK,
+		Rerank:  params.Rerank,
+		Enhance: params.Enhance,
 	})
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Error marshaling request", err)

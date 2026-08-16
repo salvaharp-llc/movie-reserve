@@ -2,10 +2,25 @@ from openai import OpenAI
 import json
 
 from .gen_utils import client, GEN_MODEL
-from .search_utils import DEFAULT_SEARCH_LIMIT
+from .search_utils import DEFAULT_SEARCH_LIMIT, CROSS_ENCODER
 
 from sentence_transformers import CrossEncoder
 
+class Reranker:
+    def __init__(self):
+        self.cross_encoder = CrossEncoder(CROSS_ENCODER)
+
+    def rerank_cross_encoder(self, query: str, results: list[dict], limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
+        pairs = []
+        for res in results:
+            pairs.append([query, f"{res.get('title', '')} - {res.get('description', '')}"])
+    
+        scores = self.cross_encoder.predict(pairs)
+    
+        for i, score in enumerate(scores):
+            results[i]["cross_encoder_score"] = score
+    
+        return sorted(results, key = lambda x: x["cross_encoder_score"], reverse=True)[:limit]
 
 def rerank_individual(query: str, results: list[dict], limit: int = DEFAULT_SEARCH_LIMIT) -> list[dict]:
     for result in results: # - {result.get("description", "")} descriptions are too long of a prompt for the LLM to handle, so just include the title

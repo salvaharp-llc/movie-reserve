@@ -1,6 +1,8 @@
 from .gen_utils import async_client, GEN_MODEL
 from .search_utils import DEFAULT_SEARCH_LIMIT
 from .hybrid_search import HybridSearch
+from .reranking import Reranker
+from .query_enhancement import async_enhance_query
 
 def build_prompt(query: str, docs: str, answer_type: str = "search") -> str | None:
     match answer_type:
