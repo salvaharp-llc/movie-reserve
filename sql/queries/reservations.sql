@@ -40,8 +40,10 @@ JOIN rooms rm ON r.room_id = rm.id
 WHERE r.id = $1;
 
 -- name: GetReservationMetaByID :one
-SELECT * FROM reservations
-WHERE id = $1;
+SELECT r.*, sc.start_time AS screening_start_time
+FROM reservations r
+JOIN screenings sc ON r.screening_id = sc.id
+WHERE r.id = $1;
 
 -- name: GetReservationsSummary :many
 SELECT 

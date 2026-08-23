@@ -258,6 +258,11 @@ func (cfg *apiConfig) handlerDeleteReservations(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	if reservation.ScreeningStartTime.Before(time.Now()) {
+		respondWithError(w, http.StatusBadRequest, "You can't delete this reservation after screening started", nil)
+		return
+	}
+
 	err = cfg.db.DeleteReservation(r.Context(), reservationID)
 	if err != nil {
 		respondWithError(w, http.StatusInternalServerError, "Couldn't delete reservation", err)

@@ -133,13 +133,26 @@ func (q *Queries) GetReservationDetailByID(ctx context.Context, id uuid.UUID) (G
 }
 
 const getReservationMetaByID = `-- name: GetReservationMetaByID :one
-SELECT id, user_id, screening_id, room_id, seat_id, created_at, updated_at FROM reservations
-WHERE id = $1
+SELECT r.id, r.user_id, r.screening_id, r.room_id, r.seat_id, r.created_at, r.updated_at, sc.start_time AS screening_start_time
+FROM reservations r
+JOIN screenings sc ON r.screening_id = sc.id
+WHERE r.id = $1
 `
 
-func (q *Queries) GetReservationMetaByID(ctx context.Context, id uuid.UUID) (Reservation, error) {
+type GetReservationMetaByIDRow struct {
+	ID                 uuid.UUID
+	UserID             uuid.UUID
+	ScreeningID        uuid.UUID
+	RoomID             uuid.UUID
+	SeatID             uuid.UUID
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	ScreeningStartTime time.Time
+}
+
+func (q *Queries) GetReservationMetaByID(ctx context.Context, id uuid.UUID) (GetReservationMetaByIDRow, error) {
 	row := q.db.QueryRowContext(ctx, getReservationMetaByID, id)
-	var i Reservation
+	var i GetReservationMetaByIDRow
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -148,6 +161,7 @@ func (q *Queries) GetReservationMetaByID(ctx context.Context, id uuid.UUID) (Res
 		&i.SeatID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.ScreeningStartTime,
 	)
 	return i, err
 }

@@ -8,7 +8,7 @@ import uuid
 
 import sqlalchemy
 
-from . import models
+from database import models
 
 
 LOAD_MOVIES = """-- name: load_movies \\:many
