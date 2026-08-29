@@ -18,14 +18,19 @@ from .search_utils import (
 stopwords = load_stopwords()
 
 class InvertedIndex:
-    def __init__(self) -> None:
+    def __init__(self, test: bool = False) -> None:
         self.index: defaultdict[str, set[uuid.UUID]] = defaultdict(set)
         self.docmap: dict[uuid.UUID, dict] = {}
         self.doc_lengths: dict[uuid.UUID, int] = {}
         self.term_frequencies: defaultdict[uuid.UUID, Counter] = defaultdict(Counter)
-        self.index_path = os.path.join(CACHE_DIR, "index.pkl")
-        self.tf_path = os.path.join(CACHE_DIR, "term_frequencies.pkl")
-        self.doc_lengths_path = os.path.join(CACHE_DIR, "doc_lengths.pkl")
+        if test:
+            self.index_path = os.path.join(CACHE_DIR, "test_index.pkl")
+            self.tf_path = os.path.join(CACHE_DIR, "test_term_frequencies.pkl")
+            self.doc_lengths_path = os.path.join(CACHE_DIR, "test_doc_lengths.pkl")
+        else:
+            self.index_path = os.path.join(CACHE_DIR, "index.pkl")
+            self.tf_path = os.path.join(CACHE_DIR, "term_frequencies.pkl")
+            self.doc_lengths_path = os.path.join(CACHE_DIR, "doc_lengths.pkl")
 
     def add_document(self, movie: dict) -> None:
         doc_id = movie["id"]

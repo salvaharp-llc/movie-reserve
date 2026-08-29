@@ -81,13 +81,18 @@ class SemanticSearch:
         return results
 
 class ChunkedSemanticSearch(SemanticSearch):
-    def __init__(self, semantic_encoder: str = SENTENCE_TRANSFORMER) -> None:
+    def __init__(self, semantic_encoder: str = SENTENCE_TRANSFORMER, test: bool = False) -> None:
         super().__init__(semantic_encoder)
         self.chunk_embeddings: np.ndarray = None
         self.chunk_metadata: list[dict] = None
+        self.test = test
         if self.model_name == SENTENCE_TRANSFORMER:
-            self.chunk_embeddings_path = os.path.join(CACHE_DIR, "chunk_embeddings.npy")
-            self.chunk_metadata_path = os.path.join(CACHE_DIR, "chunk_metadata.json")
+            if test:
+                self.chunk_embeddings_path = os.path.join(CACHE_DIR, "test_chunk_embeddings.npy")
+                self.chunk_metadata_path = os.path.join(CACHE_DIR, "test_chunk_metadata.json")
+            else:
+                self.chunk_embeddings_path = os.path.join(CACHE_DIR, "chunk_embeddings.npy")
+                self.chunk_metadata_path = os.path.join(CACHE_DIR, "chunk_metadata.json")
         elif self.model_name == MULTIMODAL_SENTENCE_TRANSFORMER:
             self.chunk_embeddings_path = os.path.join(CACHE_DIR, "multimodal_chunk_embeddings.npy")
             self.chunk_metadata_path = os.path.join(CACHE_DIR, "multimodal_chunk_metadata.json")
@@ -196,7 +201,10 @@ class ChunkedSemanticSearch(SemanticSearch):
         if os.path.exists(self.chunk_embeddings_path):
             self.chunk_embeddings = np.load(self.chunk_embeddings_path)
             with open(self.chunk_metadata_path, "r") as f:
-                self.chunk_metadata = json.load(f, object_hook=lambda d: {k: v if k != "movie_idx" else uuid.UUID(v) for k, v in d.items()})["chunks"]
+                if self.test:
+                    self.chunk_metadata = json.load(f)["chunks"]
+                else:
+                    self.chunk_metadata = json.load(f, object_hook=lambda d: {k: v if k != "movie_idx" else uuid.UUID(v) for k, v in d.items()})["chunks"]
             return self.chunk_embeddings
             
         return self.build_chunk_embeddings()

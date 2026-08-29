@@ -18,11 +18,11 @@ from .keyword_search import InvertedIndex
 from .semantic_search import ChunkedSemanticSearch
 
 class HybridSearch:
-    def __init__(self, documents: list[dict], semantic_encoder: str = SENTENCE_TRANSFORMER):
-        self.semantic_search = ChunkedSemanticSearch(semantic_encoder)
+    def __init__(self, documents: list[dict], semantic_encoder: str = SENTENCE_TRANSFORMER, test: bool = False):
+        self.semantic_search = ChunkedSemanticSearch(semantic_encoder, test)
         self.semantic_search.load_or_create_chunk_embeddings(documents)
 
-        self.idx = InvertedIndex()
+        self.idx = InvertedIndex(test)
         self.idx.load_or_build_index(documents)
 
     def exists(self, id: uuid.UUID) -> bool:

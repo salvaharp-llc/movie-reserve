@@ -1,6 +1,9 @@
 import json
 from openai import OpenAI
 from .hybrid_search import HybridSearch
+from .semantic_search import ChunkedSemanticSearch
+from .keyword_search import InvertedIndex
+from .reranking import Reranker
 
 from .search_utils import (
     load_movies, 
@@ -10,16 +13,37 @@ from .search_utils import (
 from .gen_utils import client, GEN_MODEL
 
 
-def evaluate_command(limit: int = DEFAULT_EVALUATION_LIMIT) -> None:
+def evaluate_search_command(search_type: str ,limit: int = DEFAULT_EVALUATION_LIMIT, rerank: bool = False) -> None:
     movies = load_movies()
     test_cases = load_test_cases()
 
-    hs = HybridSearch(movies)
+    match search_type:
+        case "hybrid":
+            hs = HybridSearch(movies, test=True)
+            search = hs.rrf_search
+        case "semantic":
+            css = ChunkedSemanticSearch(test=True)
+            css.load_or_create_chunk_embeddings(movies)
+            search = css.search_chunks
+        case "keyword":
+            idx = InvertedIndex(test=True)
+            idx.load_or_build_index(movies)
+            search = idx.bm25_search
+        case _:
+            raise ValueError(f"{search_type} is not supported")
+
+    if rerank:
+        re = Reranker()
+        top_k = limit
+        limit *= 2
 
     for test_case in test_cases:
         query: str = test_case["query"]
         relevant_docs: set[str] = set(test_case["relevant_docs"])
-        search_results = hs.rrf_search(query, limit=limit)
+        search_results = search(query, limit=limit)
+
+        if rerank:
+            search_results = re.rerank_cross_encoder(query, search_results, top_k)
 
         retrieved_docs = []
         for result in search_results:
