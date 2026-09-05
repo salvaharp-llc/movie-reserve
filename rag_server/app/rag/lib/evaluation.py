@@ -44,6 +44,7 @@ def evaluate_search_command(search_type: str ,limit: int = DEFAULT_EVALUATION_LI
 
         if rerank:
             search_results = re.rerank_cross_encoder(query, search_results, top_k)
+            limit = top_k
 
         retrieved_docs = []
         for result in search_results:
